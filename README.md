@@ -1,583 +1,238 @@
-# Website & Application Blocker
+# HyprBlocker
 
-A robust website and application blocking system for Arch Linux + Hyprland that prevents access to distracting sites and apps during scheduled focus periods.
+[![CI](https://github.com/TTeuber/HyprBlocker/actions/workflows/ci.yml/badge.svg)](https://github.com/TTeuber/HyprBlocker/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Platform](https://img.shields.io/badge/Platform-Linux%20%2B%20Hyprland-1793D1?logo=archlinux&logoColor=white)
 
-**Status:** ✅ **Functional** - Core system working, see [STATUS.md](STATUS.md) for details
+A self-control website and application blocker for Linux + Hyprland, built around a **tamper-resistant daemon**. Blocks distracting sites and apps on a schedule, and is deliberately hard to switch off in a moment of weakness — watchdog processes, NTP-verified time locks, and browser enforcement all work to keep the block in place until it's supposed to end.
+
+<!-- SCREENSHOTS: replace these placeholders with real captures (docs/screenshots/*.png)
+![Dashboard](docs/screenshots/dashboard.png)
+![Block configuration](docs/screenshots/block-config.png)
+![Blocked page](docs/screenshots/blocked-page.png)
+-->
+
+> 🚧 **Screenshots coming soon** — Dashboard, block configuration, and the in-browser blocked page.
+
+## Why this project is interesting
+
+Most website blockers are trivially bypassed: kill the process, change the clock, or uninstall the extension. HyprBlocker treats "future me trying to cheat" as the adversary and defends in depth:
+
+| Bypass attempt | Defense |
+| --- | --- |
+| Kill the daemon | Systemd auto-restart, plus 2–5 independent [watchdog processes](docs/WATCHDOG.md) with obfuscated names that monitor the daemon *and each other* |
+| Stop the systemd service | Daemon refuses `SIGTERM` while shutdown prevention is on |
+| Change the system clock to end a lock early | Lock expiry is verified against **NTP time**, not the local clock |
+| Disable or remove the browser extension | Daemon tracks extension heartbeats and **closes any browser** that stops reporting (60s timeout) |
+| Use incognito mode | Extension reports incognito status; enforcement requires it to be enabled |
+| Spoof the extension's identity | Native messaging host verifies the real browser PID against Hyprland's window list |
+| Edit settings during a block | Per-block lock mode makes configuration read-only (stricter rules can still be *added*) |
+
+The design principle throughout: **the daemon is the source of truth and the extension is untrusted**. In-browser blocking is a convenience layer; the real enforcement is the daemon killing non-compliant browsers via Hyprland IPC. And when anything fails — network, database, NTP — the system **fails closed** (blocks) rather than open.
+
+It's equally honest about what it *can't* stop — see [Limitations](#limitations).
 
 ## Features
 
-- **Website Blocking** - Block distracting websites with pattern matching
-- **App Blocking** - Close blocked applications via Hyprland
-- **Smart Scheduling** - Time-based blocking (weekdays 9-5, etc.)
-- **Lock Mode** - Configuration becomes read-only during blocking periods
-- **Watchdog System** - Independent processes restart daemon if killed
-- **Settings Lock** - Prevent all changes for a duration (with NTP verification)
-- **Safe Search Enforcement** - Force strict safe search on Google, Bing, and DuckDuckGo
-- **Allow Lists** - Block sites with exceptions (e.g., block reddit except r/programming)
-- **Path-Specific** - Block specific pages (e.g., youtube.com/shorts only)
-- **Browser Extension** - Enforces blocks in Firefox and Chrome
-- **Bypass-Resistant** - NTP verification, daemon refuses to stop during lock
-- **Statistics** - Track blocks and usage patterns
-- **Desktop GUI** - Easy configuration with native GTK app
-- **System Tray** - Quick access menu with daemon status
+- **Website blocking** — domain, subdomain, wildcard (`*.reddit.com`), and path-specific (`youtube.com/shorts`) patterns
+- **Allow-list exceptions** — block all of Reddit except `reddit.com/r/programming`
+- **App blocking** — closes blocked applications via Hyprland IPC (window-class matching)
+- **Scheduling** — always-on or time ranges per weekday (e.g. weekdays 9–5)
+- **Lock mode** — block configuration becomes read-only while active
+- **Settings lock** — freeze all settings until a chosen date/time, NTP-verified
+- **Watchdog system** — self-healing mesh of processes that restart the daemon if killed
+- **Safe search enforcement** — forces strict safe search on Google, Bing, and DuckDuckGo
+- **Statistics** — track blocked attempts over time
+- **Desktop GUI** — React + TypeScript frontend in a native pywebview window
+- **System tray** — status icon and quick-access menu
 
 ## Architecture
 
 ```
 ┌─────────────────┐         ┌──────────────────────┐         ┌─────────────────┐
 │  Desktop App    │  HTTP   │   Daemon (systemd)   │ Hyprland│   Applications  │
-│  (pywebview)    │◄───────►│   - FastAPI server   │  IPC    │   & Browsers    │
-│                 │         │   - Block checker    │────────►│                 │
-│  - Config UI    │         │   - Lock enforcer    │         │                 │
-│  - View stats   │         │   - Time verifier    │         │                 │
+│  (pywebview +   │◄───────►│   - FastAPI server   │  IPC    │   & Browsers    │
+│   React GUI)    │         │   - Block scheduler  │────────►│                 │
+│                 │         │   - Lock enforcer    │         │                 │
+│  - Config UI    │         │   - NTP verifier     │         │                 │
+│  - View stats   │         │   - Watchdog manager │         │                 │
 └─────────────────┘         └──────────┬───────────┘         └────────▲────────┘
                                        │                              │
-┌─────────────────┐         ┌──────────▼────────────┐                │
-│   Tray App      │         │  Browser Extension    │ Heartbeat      │
-│   (pystray)     │         │  - Blocks websites    │────────────────┘
-│                 │         │  - Sends pulse        │  (every 30s)
-│  - Quick access │         │  - Safe search        │
-│  - Status icon  │         └───────────────────────┘
+┌─────────────────┐         ┌──────────▼────────────┐                 │
+│   Tray App      │         │  Browser Extension    │  Heartbeat      │
+│   (pystray)     │         │  - Blocks websites    │─────────────────┘
+│                 │         │  - Sends heartbeat    │  (every 30s;
+│  - Quick access │         │  - Safe search        │   silence = browser
+│  - Status icon  │         └───────────────────────┘   gets closed)
 └─────────────────┘
 ```
 
-## Components
+1. **Daemon** (`daemon/`) — Python/FastAPI systemd service; owns the database, schedules, and all enforcement
+2. **Desktop app** (`desktop-app/`) — pywebview shell around a React + TypeScript (Vite) frontend
+3. **Tray app** (`tray/`) — pystray/AppIndicator status icon
+4. **Browser extension** (`extension/`) — Manifest v3 WebExtension; in-browser blocking + compliance heartbeat
 
-1. **Daemon** (Python/FastAPI) - Background service running as systemd unit
-2. **Desktop App** (Python/pywebview) - GUI for configuration and monitoring
-3. **Tray App** (Python/pystray) - System tray icon with quick access menu
-4. **Browser Extension** (JavaScript) - Blocks sites and maintains heartbeat
+Deeper dives: [Watchdog system](docs/WATCHDOG.md) · [Systemd ordering & native messaging](docs/TECHNICAL_CONCEPTS.md)
 
 ## Quick Start
 
-### 1. Install Dependencies
+Requires Arch Linux (or similar) with Hyprland, [uv](https://docs.astral.sh/uv/), and a Chromium- or Firefox-based browser.
+
+### 1. Install dependencies
 
 ```bash
-# Install Python with uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install system dependencies
+# System dependencies
 sudo pacman -S webkit2gtk python-gobject
 
-# Install Python dependencies
-cd /path/to/Blocker
+# Python dependencies
+cd /path/to/HyprBlocker
 uv sync
 ```
 
-### 2. Run the Install Script
+### 2. Run the install script
 
 ```bash
 ./install.sh
 ```
 
-This will:
+This builds the desktop and tray app executables into `~/.local/bin/`, copies the daemon and extension into place, creates the systemd service, and sets up tray autostart.
 
-- Build desktop and tray app executables to `~/.local/bin/`
-- Copy daemon files to `~/.config/website-blocker/`
-- Copy extension to `~/.local/share/website-blocker/extension/`
-- Create systemd service file
-- Set up tray app autostart (runs on login)
-
-### 3. Start the Daemon
+### 3. Start the daemon
 
 ```bash
-# Enable and start the service
-systemctl --user enable website-blocker
-systemctl --user start website-blocker
+systemctl --user enable --now website-blocker
 
-# Check status
+# Check status / logs
 systemctl --user status website-blocker
-
-# View logs
 journalctl --user -u website-blocker -f
 ```
 
-### 4. Install Browser Extension
+### 4. Install the browser extension
 
 **Chrome/Chromium:**
 
-1. Go to `chrome://extensions/`
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select `~/.local/share/website-blocker/extension/`
-5. Click extension details, enable "Allow in incognito"
+1. Go to `chrome://extensions/`, enable "Developer mode"
+2. "Load unpacked" → select `~/.local/share/website-blocker/extension/`
+3. In the extension's details, enable **"Allow in incognito"** (required — enforcement checks for it)
 
-**Important:** Extension must be enabled in incognito/private mode!
-
-### 5. Launch Desktop App
-
-After installation, the tray app will start automatically on login. To launch the desktop app:
+### 5. Launch the desktop app
 
 ```bash
-# If installed with ./install.sh --build
-website-blocker
-
-# Or run from source
+website-blocker          # installed executable
+# or from source:
 uv run python desktop-app/main.py
 ```
 
-The desktop app will automatically start the tray app if it's not already running.
-
 ## Usage
 
-### Creating Blocks
+### Creating blocks
 
-Blocks group rules together and define when they're active and when configuration is locked.
+A *block* groups rules together and defines when they're enforced and when configuration is locked.
 
-1. Open the desktop app
-2. Go to "Blocks" page
-3. Click "Add Block"
-4. Configure the block:
-
-**Basic Settings:**
-
-- **Name**: e.g., "Work Focus", "Study Time"
-- **Enabled**: Toggle to activate/deactivate
-
-**Block Schedule** (when content is blocked):
-
-- **Always Block** - Block 24/7
-- **Time Range** - Block during specific days/times (e.g., weekdays 9am-5pm)
-- **Disabled** - Don't block (rules inactive)
-
-**Lock Schedule** (when configuration is read-only):
-
-- **No Lock** - Config can be changed anytime
-- **Time Range** - Config locked during specific days/times
-- **Locked Until** - Config locked until a specific date/time
-
-**Blocked Content** (one entry per line):
-
-- **Blocked Websites**:
-
-  ```
-  reddit.com
-  youtube.com/shorts
-  twitter.com
-  ```
-
-- **Allowed Websites** (exceptions to blocked):
-
-  ```
-  reddit.com/r/programming
-  reddit.com/r/linux
-  youtube.com/educational
-  ```
-
-- **Blocked Applications**:
-
-  ```
-  steam
-  discord
-  slack
-  ```
-
-### Pattern Matching
-
-**Websites:**
-
-- `reddit.com` - Blocks reddit.com and all subdomains/paths
-- `youtube.com/shorts` - Blocks only YouTube Shorts (path-specific)
-- `*.reddit.com` - Blocks all Reddit subdomains but not reddit.com itself
-- `old.reddit.com` - Blocks only old.reddit.com
-
-**Applications:**
-
-- `steam` - Exact match or partial (matches "steam", "steam.exe", etc.)
-- `*discord*` - Wildcard matching
-
-### Allow List Precedence
-
-Allow lists always take priority over block lists:
-
-**Example:** Block all of Reddit except programming subreddits
+- **Block schedule**: always, time range (days + start/end time, overnight ranges supported), or disabled
+- **Lock schedule**: none, or locked until a specific date/time
+- **Rules** (one per line):
 
 ```
-Blocked Websites:
-  reddit.com
-
-Allowed Websites:
-  reddit.com/r/programming
-  reddit.com/r/archlinux
+Blocked Websites          Allowed Websites             Blocked Applications
+reddit.com                reddit.com/r/programming     steam
+youtube.com/shorts        reddit.com/r/linux           discord
+twitter.com
 ```
 
-### Lock Mode
+### Pattern matching
 
-When a block's lock schedule is active:
+| Pattern | Matches |
+| --- | --- |
+| `reddit.com` | reddit.com, all subdomains, all paths |
+| `youtube.com/shorts` | only that path and its subpaths |
+| `*.reddit.com` | all subdomains |
+| `old.reddit.com` | only that subdomain |
+| `steam` (app) | window class containing "steam" (e.g. `steam_app_123456`) |
 
-- Configuration becomes read-only
-- Cannot edit or delete the locked block
-- Can still create new blocks (they have their own locks)
-- Daemon refuses to stop (systemd service won't terminate)
-- Lock banner shows time until unlock
+Allow lists always take precedence over block lists. When multiple blocks match a URL, it's only allowed if **every** matching block's allow list permits it.
 
-### Browser Status
+### Lock mode
 
-The "Browsers" page shows:
+While a block's lock is active: the block can't be edited or deleted, the daemon refuses to stop, and only *stricter* rules can be added. The settings lock does the same for global settings, with expiry checked against NTP so changing the system clock doesn't help.
 
-- ✅ Chrome - Extension active
-- ❌ Firefox - Extension not detected
-- ⏱️ Grace Period - 30 second window to install extensions
+### Browser status & grace period
 
-**Grace Period:**
-Click "Add Extension" to start a 30-second grace period where browser enforcement is paused, giving you time to install the extension.
-
-### Tray App
-
-The tray app provides quick access to the blocker from the system tray:
-
-- **System tray icon**: Shows blocker status at a glance
-- **Quick menu**:
-  - Open Desktop App - Launch the full configuration UI
-  - Daemon Status - Check if daemon is running
-  - Quit - Exit the tray app (daemon continues running)
-- **Autostart**: Automatically starts on login via `~/.config/autostart/`
-
-The tray app is lightweight and uses the pystray library with AppIndicator backend for Wayland/Hyprland compatibility.
-
-### Safe Search Enforcement
-
-The "Settings" page includes an option to enforce safe search on major search engines:
-
-- **Google**: Automatically adds `safe=active` parameter
-- **Bing**: Automatically adds `adlt=strict` parameter
-- **DuckDuckGo**: Automatically adds `kp=1` parameter
-
-When enabled:
-
-- Search URLs are automatically modified before loading
-- Works seamlessly with website blocking
-- Respects settings lock (cannot be disabled when locked)
-- Default: **Disabled** (opt-in feature)
-
-This feature helps prevent unwanted content in search results without blocking the search engines entirely.
+The "Browsers" page shows which running browsers have a live extension heartbeat. "Add Extension" starts a 30-second grace period that pauses enforcement so you can install the extension without the browser being closed.
 
 ## Configuration Files
 
-- **Config**: `~/.config/website-blocker/config.json`
-- **Database**: `~/.config/website-blocker/blocker.db`
-- **Watchdog State**: `~/.config/website-blocker/watchdog_state.json`
-- **Extension**: `~/.local/share/website-blocker/extension/`
-- **Executables**:
-  - Desktop app: `~/.local/bin/website-blocker`
-  - Tray app: `~/.local/bin/website-blocker-tray`
-- **Autostart**: `~/.config/autostart/website-blocker-tray.desktop`
-- **Icons**: `~/.local/share/website-blocker/icons/`
-- **Logs**:
-  - Daemon: `~/.config/website-blocker/daemon.log`
-  - Watchdog: `~/.config/website-blocker/watchdog.log`
-  - Systemd: `journalctl --user -u website-blocker`
+| File | Purpose |
+| --- | --- |
+| `~/.config/website-blocker/config.json` | Daemon settings |
+| `~/.config/website-blocker/blocker.db` | SQLite database (blocks, events, heartbeats) |
+| `~/.config/website-blocker/watchdog_state.json` | Watchdog process state |
+| `~/.config/website-blocker/daemon.log` | Daemon log |
+| `~/.config/systemd/user/website-blocker.service` | Systemd unit |
 
-## API Endpoints
+## API
 
-The daemon exposes a REST API at `http://127.0.0.1:8765`:
+The daemon exposes a REST API on `http://127.0.0.1:8765`. Highlights:
 
-### Status & Info
-
-- `GET /api/status` - Daemon status and lock state
-- `GET /api/stats` - Blocking statistics
-- `GET /api/browsers` - Browser extension status
-
-### Blocks
-
-- `GET /api/blocks` - List all blocks
-- `POST /api/blocks` - Create a block
-- `PUT /api/blocks/{id}` - Update a block
-- `DELETE /api/blocks/{id}` - Delete a block
-- `GET /api/blocks/{id}/lock-status` - Check if block is locked
-
-### Extension
-
-- `POST /api/heartbeat` - Extension heartbeat
-- `GET /api/grace-period` - Grace period status
-- `POST /api/grace-period` - Start grace period
-
-### Settings
-
-- `GET /api/settings/browser-enforcement` - Browser enforcement status
-- `PUT /api/settings/browser-enforcement` - Toggle browser enforcement
-- `GET /api/settings/safe-search` - Safe search enforcement status
-- `PUT /api/settings/safe-search` - Toggle safe search enforcement
-- `GET /api/settings/watchdog` - Watchdog status
-- `PUT /api/settings/watchdog` - Enable/disable watchdog
-- `GET /api/settings/lock` - Settings lock status
-- `POST /api/settings/lock` - Lock settings until datetime
-- `DELETE /api/settings/lock` - Unlock settings
-
-## Debugging
-
-### Check Daemon Status
-
-```bash
-# Service status
-systemctl --user status website-blocker
-
-# View logs
-journalctl --user -u website-blocker -f
-
-# Test API
-curl http://127.0.0.1:8765/api/status | python3 -m json.tool
-```
-
-### Check Blocks
-
-```bash
-# List all blocks
-curl http://127.0.0.1:8765/api/blocks | python3 -m json.tool
-
-# Check browser status
-curl http://127.0.0.1:8765/api/browsers | python3 -m json.tool
-```
-
-### Check Hyprland Windows
-
-```bash
-# List all windows
-hyprctl clients -j | jq '.[] | {class, pid, title}'
-
-# Find browser windows
-hyprctl clients -j | jq '.[] | select(.class | contains("firefox"))'
-```
-
-### Common Issues
-
-**Daemon won't start:**
-
-```bash
-# Check logs for errors
-journalctl --user -u website-blocker -n 50 --no-pager
-
-# Verify port is available
-ss -tulpn | grep 8765
-
-# Test database
-sqlite3 ~/.config/website-blocker/blocker.db ".tables"
-```
-
-**Extension not working:**
-
-```bash
-# Check if extension is loaded
-# Firefox: about:debugging
-# Chrome: chrome://extensions/
-
-# Verify extension can reach daemon
-# Open browser console (F12) and look for errors
-
-# Check heartbeat is being received
-curl http://127.0.0.1:8765/api/browsers
-```
-
-**Sites not blocked:**
-
-```bash
-# Check if block is active
-curl http://127.0.0.1:8765/api/blocks | jq '.[] | select(.enabled == true)'
-
-# Verify block schedule
-# Check block_mode and time ranges
-
-# Test pattern matching
-# Make sure URL pattern matches correctly
-```
-
-## Security Notes
-
-### Bypass Resistance
-
-- **Watchdog System**: Independent processes restart daemon if killed (see [WATCHDOG.md](WATCHDOG.md))
-- **Settings Lock**: Prevents all configuration changes until expiry (NTP-verified)
-- **Daemon Protection**: Refuses SIGTERM during lock, auto-restarts via systemd
-- **Extension Heartbeat**: Browser closes if extension stops (60s timeout)
-- **Safe Search Enforcement**: Automatically adds safe search parameters to Google, Bing, and DuckDuckGo
-- **Time Verification**: NTP check prevents clock manipulation
-- **Lock Mode**: Configuration frozen during blocking periods
-- **Fail-Safe**: Network/DB errors result in blocking (not allowing)
-
-**Watchdog Features:**
-
-- 2-5 configurable watchdog processes (default 3)
-- Obfuscated process names (blend in with system processes)
-- Self-perpetuating (watchdogs monitor and respawn each other)
-- Automatically restart daemon via systemctl
-- Respect settings lock (continue protecting even during shutdown attempts)
-
-See [WATCHDOG.md](WATCHDOG.md) for detailed documentation.
-
-### Limitations
-
-**This is designed for self-control, not parental controls.**
-
-Determined users with system access can bypass:
-
-- `pkill -9 python` - Kills daemon, watchdogs, and desktop app
-- `sudo systemctl disable website-blocker` - Prevents auto-start
-- Changing system time (detected via NTP when network available)
-- Editing database directly (when not locked)
-- Disabling extension (browser gets killed)
-- Boot into recovery mode
-
-**However, the watchdog system makes impulsive bypasses harder:**
-
-- Requires finding and killing multiple obfuscated processes
-- Settings lock prevents easy disabling via UI/API
-- Provides time to reconsider before succeeding
-
-For a more secure solution, consider:
-
-1. Network-level blocking (router/firewall)
-2. Separate user account with restricted permissions
-3. Rust rewrite (harder to bypass than Python)
-4. Kernel module (but complex to maintain)
-
-## Project Structure
-
-```
-Blocker/
-├── daemon/              # Python daemon
-│   ├── main.py          # Entry point
-│   ├── api/             # REST API package
-│   │   ├── __init__.py  # App creation and router wiring
-│   │   ├── app.py       # FastAPI app setup
-│   │   ├── deps.py      # Shared dependencies
-│   │   ├── schemas.py   # Pydantic models
-│   │   └── routes/      # API route handlers
-│   │       ├── blocks.py
-│   │       ├── heartbeat.py
-│   │       ├── settings.py
-│   │       └── status.py
-│   ├── blocker.py       # Blocking logic
-│   ├── scheduler.py     # Schedule checking
-│   ├── watchdog.py      # Watchdog manager
-│   ├── watchdog_runner.py  # Watchdog process entry point
-│   ├── database.py      # SQLAlchemy models
-│   ├── migrations.py    # Database migrations
-│   ├── hyprland_monitor.py  # Window monitoring
-│   ├── heartbeat_tracker.py  # Browser compliance
-│   ├── lock_manager.py  # Lock enforcement
-│   ├── time_verifier.py # NTP verification
-│   └── config.py        # Configuration management
-├── desktop-app/         # Python + pywebview GUI
-│   ├── main.py          # Entry point
-│   ├── api_client.py    # Daemon API client
-│   ├── frontend/        # React + TypeScript (Vite)
-│   └── desktop-app.spec # PyInstaller spec
-├── tray/                # System tray app
-│   ├── main.py          # Entry point
-│   └── tray-app.spec    # PyInstaller spec
-├── extension/           # Browser extension
-│   ├── manifest.json
-│   ├── background.js
-│   ├── blocked.html
-│   ├── popup/           # Extension popup UI
-│   └── native-host/     # Native messaging host
-│       └── host.py
-├── icons/               # App icons
-│   ├── icon-desktop-*.png
-│   └── icon-tray-*.png
-├── config/              # Configuration templates
-├── install.sh           # Installation script
-├── reinstall.sh         # Development reinstall script
-├── CLAUDE.md            # Technical reference for Claude
-├── README.md            # This file
-└── documentation/       # Additional documentation
-```
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/api/status` | GET | Daemon status, active blocks |
+| `/api/blocks` | GET/POST | List/create blocks |
+| `/api/blocks/{id}` | PUT/DELETE | Update/delete (refused while locked) |
+| `/api/blocks/{id}/strict` | PATCH | Add stricter rules (allowed while locked) |
+| `/api/heartbeat` | POST | Browser extension heartbeat |
+| `/api/blocked-sites` | GET | Current patterns, consumed by the extension |
+| `/api/settings/lock` | GET/POST/DELETE | NTP-verified settings lock |
+| `/api/settings/watchdog` | GET/PUT | Watchdog enable/disable |
 
 ## Development
 
-### Running from Source
+### Running from source
 
 ```bash
-# Start daemon in foreground (for debugging)
-cd daemon
-uv run python main.py
+uv run python daemon/main.py        # daemon in foreground
+uv run python desktop-app/main.py   # desktop app
+uv run python tray/main.py          # tray app
 
-# Start desktop app
-cd desktop-app
-uv run python main.py
-
-# Start tray app
-cd tray
-uv run python main.py
-
-# Load extension in browser
-# Firefox: about:debugging
-# Chrome: chrome://extensions
+cd desktop-app/frontend && bun dev  # frontend with hot reload
 ```
 
-### Building Executables
+### Tests & linting
 
 ```bash
-# Build both desktop and tray apps
-./install.sh --build
-
-# Executables will be created in:
-# - ~/.local/bin/website-blocker (desktop app)
-# - ~/.local/bin/website-blocker-tray (tray app)
+uv run pytest            # unit tests (pattern matching, scheduling)
+uv run ruff check .      # Python lint
+cd desktop-app/frontend && bun run lint && bun run build
 ```
 
-### Database Migrations
+CI runs all of the above on every push (see `.github/workflows/ci.yml`).
 
-Migrations run automatically on daemon startup. To manually inspect:
+### Debugging
 
 ```bash
-# Open database
-sqlite3 ~/.config/website-blocker/blocker.db
-
-# List tables
-.tables
-
-# View blocks
-SELECT * FROM blocks;
-
-# View schema
-.schema blocks
+curl http://127.0.0.1:8765/api/status | python3 -m json.tool   # daemon alive?
+curl http://127.0.0.1:8765/api/browsers                        # extension heartbeats
+hyprctl clients -j | jq '.[] | {class, pid, title}'            # what Hyprland sees
+journalctl --user -u website-blocker -n 50 --no-pager          # recent daemon logs
 ```
 
-## Future Enhancements
+## Limitations
 
-See [STATUS.md](STATUS.md) for current priorities.
+**This is designed for self-control, not parental controls.** A determined user with system access can always win:
 
-**Planned:**
+- `pkill -9 python` kills the daemon, watchdogs, and desktop app together
+- `systemctl --user disable website-blocker` prevents auto-start after reboot
+- Booting into recovery mode sidesteps everything
+- Editing the database directly (when no lock is active)
 
-- Break intervals (5 minutes every hour)
-- Usage limits (block after X minutes total)
-- Site categories (Social, News, Gaming)
-- Import/export configurations
-- Better statistics dashboard
-- Mobile companion app
-
-**Maybe:**
-
-- Rust rewrite for better security
-- Multi-device sync
-- Accountability partner features
-- Browser history analysis
-
-## Contributing
-
-This is a personal project, but bug reports and feature requests are welcome:
-
-1. Check [STATUS.md](STATUS.md) for known issues
-2. Search existing issues
-3. Create detailed bug report with logs
-4. Pull requests welcome for bug fixes
+The threat model is *impulsive* bypass, not adversarial admin access. The watchdog mesh, obfuscated process names, and NTP-verified locks are there to make cheating take long enough that the impulse passes. For genuinely adversarial scenarios you'd want network-level blocking or a separate restricted user account.
 
 ## License
 
-MIT License - See LICENSE file for details
-
-## Acknowledgments
-
-Built for personal use on Arch Linux + Hyprland. Inspired by various website blockers but designed specifically for tiling window managers and strict enforcement.
-
-## Links
-
-- Project Status: [STATUS.md](STATUS.md)
-- Full Specification: [PROJECT_SPEC.md](PROJECT_SPEC.md)
-- Watchdog Documentation: [WATCHDOG.md](WATCHDOG.md)
-- Installation Guide: See "Quick Start" above
+[MIT](LICENSE)
 
 ---
 
-**Remember:** This tool is meant to help you, not to punish you. Use it wisely and adjust your blocks as needed. The goal is productivity, not suffering! 🚀
+Built for personal use on Arch Linux + Hyprland — designed specifically for tiling window managers and strict enforcement. The goal is productivity, not suffering. 🚀

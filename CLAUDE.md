@@ -69,6 +69,26 @@ Tray App + Desktop App + Browser Extension
 - `popup/` - Extension popup UI
 - `native-host/host.py` - Native messaging for PID detection
 
+### Tests (tests/)
+
+- `conftest.py` - Adds `daemon/` to sys.path for imports
+- `test_blocker.py` - URL/app pattern matching and rule parsing
+- `test_scheduler.py` - Schedule logic (day/time parsing, active-block evaluation)
+- Run with `uv run pytest` (pytest is in the root dev dependency group)
+
+### Docs (docs/)
+
+- `WATCHDOG.md` - Watchdog system deep-dive (linked from README)
+- `TECHNICAL_CONCEPTS.md` - Systemd startup ordering and native messaging writeup
+- `PORTFOLIO_TODO.md` - Remaining portfolio-polish work items
+
+### CI & Tooling
+
+- `.github/workflows/ci.yml` - GitHub Actions: ruff lint, pytest, frontend lint + build
+- Ruff config lives in the root `pyproject.toml` (`uv run ruff check .`)
+- `LICENSE` - MIT
+- Public branding is **HyprBlocker** (GitHub repo name, README); internal names, executables, and config paths still use `website-blocker`
+
 ## Database Schema
 
 Location: `~/.config/website-blocker/blocker.db`
