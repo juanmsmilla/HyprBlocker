@@ -21,7 +21,7 @@ export function FormGroup({ label, hint, children, className = '' }: FormGroupPr
   );
 }
 
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {}
+type InputProps = InputHTMLAttributes<HTMLInputElement>;
 
 export function Input({ className = '', ...props }: InputProps) {
   return (
@@ -47,7 +47,7 @@ export function Select({ className = '', children, ...props }: SelectProps) {
   );
 }
 
-interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {}
+type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement>;
 
 export function Textarea({ className = '', ...props }: TextareaProps) {
   return (

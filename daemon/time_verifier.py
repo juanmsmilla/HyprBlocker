@@ -1,12 +1,12 @@
 """NTP time verification to prevent time manipulation bypasses."""
 
-from datetime import datetime, timezone
-from typing import Optional
 import logging
-import ntplib
+import os
 import socket
 import sys
-import os
+from datetime import UTC, datetime
+
+import ntplib
 
 # Add daemon directory to Python path for absolute imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -21,8 +21,8 @@ class TimeVerifier:
 
     def __init__(self):
         self._ntp_client = ntplib.NTPClient()
-        self._last_verified: Optional[datetime] = None
-        self._last_ntp_time: Optional[datetime] = None
+        self._last_verified: datetime | None = None
+        self._last_ntp_time: datetime | None = None
         self._cached_valid = True
 
     @property
@@ -35,7 +35,7 @@ class TimeVerifier:
         """Get max allowed time difference in seconds."""
         return get_config().security.max_time_diff_seconds
 
-    def get_ntp_time(self) -> Optional[datetime]:
+    def get_ntp_time(self) -> datetime | None:
         """Query NTP servers for accurate time.
 
         Returns:
@@ -44,10 +44,10 @@ class TimeVerifier:
         for server in self.ntp_servers:
             try:
                 response = self._ntp_client.request(server, timeout=5)
-                ntp_time = datetime.fromtimestamp(response.tx_time, tz=timezone.utc)
+                ntp_time = datetime.fromtimestamp(response.tx_time, tz=UTC)
                 logger.debug(f"Got NTP time from {server}: {ntp_time}")
                 return ntp_time
-            except (ntplib.NTPException, socket.gaierror, socket.timeout, OSError) as e:
+            except (TimeoutError, ntplib.NTPException, socket.gaierror, OSError) as e:
                 logger.warning(f"Failed to query NTP server {server}: {e}")
                 continue
 
@@ -67,7 +67,7 @@ class TimeVerifier:
             logger.warning("Could not verify time with NTP (network down?) - trusting system time")
             return True
 
-        system_time = datetime.now(timezone.utc)
+        system_time = datetime.now(UTC)
         diff = abs((ntp_time - system_time).total_seconds())
 
         if diff > self.max_time_diff:
@@ -101,7 +101,7 @@ class TimeVerifier:
 
             # If we recently verified successfully, trust that
             if self._last_verified is not None:
-                time_since_verify = (datetime.now(timezone.utc) - self._last_verified).total_seconds()
+                time_since_verify = (datetime.now(UTC) - self._last_verified).total_seconds()
                 if time_since_verify < 300:  # Verified within last 5 minutes
                     logger.info("Using cached time verification from recent check")
                     return self._cached_valid
@@ -109,7 +109,7 @@ class TimeVerifier:
             # No recent verification - fail-safe means block
             return False
 
-        system_time = datetime.now(timezone.utc)
+        system_time = datetime.now(UTC)
         diff = abs((ntp_time - system_time).total_seconds())
 
         if diff > self.max_time_diff:
@@ -134,14 +134,14 @@ class TimeVerifier:
         """
         # Verify time periodically (every 5 minutes)
         if self._last_verified is None or \
-           (datetime.now(timezone.utc) - self._last_verified).total_seconds() > 300:
+           (datetime.now(UTC) - self._last_verified).total_seconds() > 300:
             self.is_system_time_valid()
 
         return datetime.now()
 
 
 # Global time verifier instance
-_verifier: Optional[TimeVerifier] = None
+_verifier: TimeVerifier | None = None
 
 
 def get_time_verifier() -> TimeVerifier:

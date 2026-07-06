@@ -1,22 +1,19 @@
 """Database models and setup for the website blocker daemon."""
 
+import logging
+import os
 from datetime import datetime
-from typing import List, Optional
+
 from sqlalchemy import (
-    create_engine,
+    Boolean,
     Column,
+    DateTime,
     Integer,
     String,
-    Boolean,
-    DateTime,
-    ForeignKey,
     Text,
 )
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
-from sqlalchemy.ext.asyncio import async_sessionmaker
-import os
-import logging
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +132,7 @@ def get_database_url() -> str:
 
 async def init_database():
     """Initialize the database and create all tables."""
-    from migrations import migrate_schedules_to_blocks, migrate_rules_to_text_fields
+    from migrations import migrate_rules_to_text_fields, migrate_schedules_to_blocks
 
     engine = create_async_engine(get_database_url(), echo=False)
 

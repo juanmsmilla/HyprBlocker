@@ -1,25 +1,26 @@
 """Settings API routes for browser enforcement, safe search, watchdog, and lock."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
-
-from config import get_config, save_config, reload_config
 from service_enforcer import ensure_service_enabled
 from time_verifier import get_time_verifier
 from watchdog import WatchdogManager, is_settings_locked_ntp
+
+from config import get_config, reload_config, save_config
+
 from ..schemas import (
     BrowserEnforcementStatusResponse,
     BrowserEnforcementUpdateRequest,
     SafeSearchStatusResponse,
     SafeSearchUpdateRequest,
+    SettingsLockRequest,
+    SettingsLockResponse,
     ShutdownPreventionStatusResponse,
     ShutdownPreventionUpdateRequest,
     WatchdogStatusResponse,
     WatchdogUpdateRequest,
-    SettingsLockResponse,
-    SettingsLockRequest,
 )
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -34,7 +35,7 @@ async def get_browser_enforcement_status():
 
     return BrowserEnforcementStatusResponse(
         enabled=config.security.browser_enforcement_enabled,
-        source='config' if config.security.browser_enforcement_enabled != True else 'default'
+        source='config' if not config.security.browser_enforcement_enabled else 'default'
     )
 
 
@@ -75,7 +76,7 @@ async def get_safe_search_status():
 
     return SafeSearchStatusResponse(
         enabled=config.security.safe_search_enabled,
-        source='config' if config.security.safe_search_enabled != False else 'default'
+        source='config' if config.security.safe_search_enabled else 'default'
     )
 
 
@@ -116,7 +117,7 @@ async def get_shutdown_prevention_status():
 
     return ShutdownPreventionStatusResponse(
         enabled=config.security.shutdown_prevention_enabled,
-        source='config' if config.security.shutdown_prevention_enabled != False else 'default'
+        source='config' if config.security.shutdown_prevention_enabled else 'default'
     )
 
 
@@ -135,7 +136,6 @@ async def update_shutdown_prevention_status(request: ShutdownPreventionUpdateReq
         )
 
     config = get_config()
-    old_enabled = config.security.shutdown_prevention_enabled
     config.security.shutdown_prevention_enabled = request.enabled
 
     # If disabling shutdown prevention, also disable watchdogs
@@ -267,8 +267,8 @@ async def get_settings_lock():
     try:
         lock_until = datetime.fromisoformat(lock_until_str)
         if lock_until.tzinfo is None:
-            lock_until = lock_until.replace(tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
+            lock_until = lock_until.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
         remaining = int((lock_until - now).total_seconds())
     except Exception:
         remaining = None
@@ -294,7 +294,7 @@ async def lock_settings(request: SettingsLockRequest):
         raise HTTPException(
             status_code=400,
             detail="Invalid datetime format. Use ISO format like '2024-12-25T14:30:00'"
-        )
+        ) from None
 
     # Verify system time with NTP
     verifier = get_time_verifier()
@@ -304,9 +304,9 @@ async def lock_settings(request: SettingsLockRequest):
             detail="System time appears to be manipulated. Cannot set lock."
         )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if lock_until.tzinfo is None:
-        lock_until = lock_until.replace(tzinfo=timezone.utc)
+        lock_until = lock_until.replace(tzinfo=UTC)
 
     # Check if already locked
     config = get_config()
@@ -316,7 +316,7 @@ async def lock_settings(request: SettingsLockRequest):
         # Already locked - this is an EXTENSION request
         current_lock = datetime.fromisoformat(current_lock_str)
         if current_lock.tzinfo is None:
-            current_lock = current_lock.replace(tzinfo=timezone.utc)
+            current_lock = current_lock.replace(tzinfo=UTC)
 
         if lock_until <= current_lock:
             raise HTTPException(

@@ -2,7 +2,7 @@
 
 from .app import create_app
 from .deps import set_session_factory
-from .routes import heartbeat, blocks, status, settings
+from .routes import blocks, heartbeat, settings, status
 
 # Create the FastAPI app
 app = create_app()

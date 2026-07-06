@@ -1,8 +1,8 @@
 """API client for communicating with the Website Blocker daemon."""
 
-import requests
-from typing import Dict, List, Optional
 from dataclasses import dataclass
+
+import requests
 
 
 @dataclass
@@ -11,16 +11,16 @@ class Block:
     id: int
     name: str
     block_mode: str
-    block_days_of_week: Optional[str]
-    block_start_time: Optional[str]
-    block_end_time: Optional[str]
+    block_days_of_week: str | None
+    block_start_time: str | None
+    block_end_time: str | None
     lock_mode: str
-    lock_until: Optional[str]
+    lock_until: str | None
     enabled: bool
     created_at: str
-    websites_blocked: Optional[str]
-    websites_allowed: Optional[str]
-    apps_blocked: Optional[str]
+    websites_blocked: str | None
+    websites_allowed: str | None
+    apps_blocked: str | None
 
 
 @dataclass
@@ -59,8 +59,8 @@ class BrowserStatus:
 class GracePeriodStatus:
     """Represents grace period status."""
     active: bool
-    expires_at: Optional[str]
-    remaining_seconds: Optional[int]
+    expires_at: str | None
+    remaining_seconds: int | None
 
 
 @dataclass
@@ -96,8 +96,8 @@ class WatchdogStatus:
 class SettingsLockStatus:
     """Represents settings lock status."""
     locked: bool
-    lock_until: Optional[str]
-    remaining_seconds: Optional[int]
+    lock_until: str | None
+    remaining_seconds: int | None
 
 
 class DaemonClient:
@@ -139,7 +139,7 @@ class DaemonClient:
         except requests.RequestException:
             return False
 
-    def get_status(self) -> Optional[DaemonStatus]:
+    def get_status(self) -> DaemonStatus | None:
         """Get the daemon status.
 
         Returns:
@@ -154,7 +154,7 @@ class DaemonClient:
             pass
         return None
 
-    def get_blocks(self) -> List[Block]:
+    def get_blocks(self) -> list[Block]:
         """Get all blocks.
 
         Returns:
@@ -168,7 +168,7 @@ class DaemonClient:
             pass
         return []
 
-    def add_block(self, name: str, block_mode: str = 'always', lock_mode: str = 'none', **kwargs) -> Optional[Block]:
+    def add_block(self, name: str, block_mode: str = 'always', lock_mode: str = 'none', **kwargs) -> Block | None:
         """Add a new block.
 
         Args:
@@ -196,7 +196,7 @@ class DaemonClient:
             pass
         return None
 
-    def update_block(self, block_id: int, **updates) -> Optional[Block]:
+    def update_block(self, block_id: int, **updates) -> Block | None:
         """Update a block.
 
         Args:
@@ -207,9 +207,9 @@ class DaemonClient:
             Updated Block or None if failed
         """
         try:
-            print(f"\n[API Client] update_block called:")
+            print("\n[API Client] update_block called:")
             print(f"  URL: {self.base_url}/api/blocks/{block_id}")
-            print(f"  Method: PUT")
+            print("  Method: PUT")
             print(f"  Data: {updates}")
 
             response = self._request('PUT', f'/api/blocks/{block_id}', json=updates)
@@ -264,9 +264,9 @@ class DaemonClient:
             else:
                 raise Exception(f"Failed to get block lock status: {response.text}")
         except requests.RequestException as e:
-            raise Exception(f"Request failed: {str(e)}")
+            raise Exception(f"Request failed: {str(e)}") from e
 
-    def update_block_strict(self, block_id: int, **updates) -> Optional[Block]:
+    def update_block_strict(self, block_id: int, **updates) -> Block | None:
         """Update a block with stricter rules only (allowed even when locked).
 
         Args:
@@ -286,9 +286,9 @@ class DaemonClient:
             else:
                 raise Exception(f"Failed to update block: {response.text}")
         except requests.RequestException as e:
-            raise Exception(f"Request failed: {str(e)}")
+            raise Exception(f"Request failed: {str(e)}") from e
 
-    def extend_block_lock(self, block_id: int, lock_until: str) -> Optional[Block]:
+    def extend_block_lock(self, block_id: int, lock_until: str) -> Block | None:
         """Extend lock duration for a block (allowed even when locked).
 
         Args:
@@ -305,9 +305,9 @@ class DaemonClient:
             else:
                 raise Exception(f"Failed to extend block lock: {response.text}")
         except requests.RequestException as e:
-            raise Exception(f"Request failed: {str(e)}")
+            raise Exception(f"Request failed: {str(e)}") from e
 
-    def get_stats(self) -> Optional[Stats]:
+    def get_stats(self) -> Stats | None:
         """Get blocking statistics.
 
         Returns:
@@ -321,7 +321,7 @@ class DaemonClient:
             pass
         return None
 
-    def get_browsers(self) -> List[BrowserStatus]:
+    def get_browsers(self) -> list[BrowserStatus]:
         """Get detected browsers and their status.
 
         Returns:
@@ -335,7 +335,7 @@ class DaemonClient:
             pass
         return []
 
-    def start_grace_period(self) -> Optional[GracePeriodStatus]:
+    def start_grace_period(self) -> GracePeriodStatus | None:
         """Start a grace period for adding browser extensions.
 
         Returns:
@@ -349,7 +349,7 @@ class DaemonClient:
             pass
         return None
 
-    def get_grace_period_status(self) -> Optional[GracePeriodStatus]:
+    def get_grace_period_status(self) -> GracePeriodStatus | None:
         """Get the current grace period status.
 
         Returns:
@@ -363,7 +363,7 @@ class DaemonClient:
             pass
         return None
 
-    def get_browser_enforcement_status(self) -> Optional[BrowserEnforcementStatus]:
+    def get_browser_enforcement_status(self) -> BrowserEnforcementStatus | None:
         """Get browser enforcement status.
 
         Returns:
@@ -398,9 +398,9 @@ class DaemonClient:
             else:
                 raise Exception(f"Failed to update browser enforcement: {response.text}")
         except requests.RequestException as e:
-            raise Exception(f"Request failed: {str(e)}")
+            raise Exception(f"Request failed: {str(e)}") from e
 
-    def get_safe_search_status(self) -> Optional[SafeSearchStatus]:
+    def get_safe_search_status(self) -> SafeSearchStatus | None:
         """Get safe search enforcement status.
 
         Returns:
@@ -435,9 +435,9 @@ class DaemonClient:
             else:
                 raise Exception(f"Failed to update safe search: {response.text}")
         except requests.RequestException as e:
-            raise Exception(f"Request failed: {str(e)}")
+            raise Exception(f"Request failed: {str(e)}") from e
 
-    def get_shutdown_prevention_status(self) -> Optional[ShutdownPreventionStatus]:
+    def get_shutdown_prevention_status(self) -> ShutdownPreventionStatus | None:
         """Get shutdown prevention status.
 
         Returns:
@@ -472,9 +472,9 @@ class DaemonClient:
             else:
                 raise Exception(f"Failed to update shutdown prevention: {response.text}")
         except requests.RequestException as e:
-            raise Exception(f"Request failed: {str(e)}")
+            raise Exception(f"Request failed: {str(e)}") from e
 
-    def get_watchdog_status(self) -> Optional[WatchdogStatus]:
+    def get_watchdog_status(self) -> WatchdogStatus | None:
         """Get watchdog status.
 
         Returns:
@@ -488,7 +488,7 @@ class DaemonClient:
             pass
         return None
 
-    def update_watchdog(self, enabled: Optional[bool] = None, count: Optional[int] = None) -> dict:
+    def update_watchdog(self, enabled: bool | None = None, count: int | None = None) -> dict:
         """Update watchdog settings.
 
         Args:
@@ -516,9 +516,9 @@ class DaemonClient:
             else:
                 raise Exception(f"Failed to update watchdog: {response.text}")
         except requests.RequestException as e:
-            raise Exception(f"Request failed: {str(e)}")
+            raise Exception(f"Request failed: {str(e)}") from e
 
-    def get_settings_lock(self) -> Optional[SettingsLockStatus]:
+    def get_settings_lock(self) -> SettingsLockStatus | None:
         """Get settings lock status.
 
         Returns:
@@ -550,7 +550,7 @@ class DaemonClient:
             else:
                 raise Exception(f"Failed to lock settings: {response.text}")
         except requests.RequestException as e:
-            raise Exception(f"Request failed: {str(e)}")
+            raise Exception(f"Request failed: {str(e)}") from e
 
     def unlock_settings(self) -> dict:
         """Unlock settings.
@@ -570,4 +570,4 @@ class DaemonClient:
             else:
                 raise Exception(f"Failed to unlock settings: {response.text}")
         except requests.RequestException as e:
-            raise Exception(f"Request failed: {str(e)}")
+            raise Exception(f"Request failed: {str(e)}") from e

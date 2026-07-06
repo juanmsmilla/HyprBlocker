@@ -6,25 +6,23 @@ import os
 import signal
 import sys
 from contextlib import asynccontextmanager
-from typing import List
 
 # Add daemon directory to Python path for absolute imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import uvicorn
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
-
 from api import app, set_session_factory
-from config import get_config, get_config_path
-from database import init_database, create_session_factory, Block
-from heartbeat_tracker import get_heartbeat_tracker
-from hyprland_monitor import init_hyprland_monitor, get_hyprland_monitor
-from lock_manager import init_lock_manager, get_lock_manager
-from scheduler import init_scheduler, get_scheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from database import Block, create_session_factory, init_database
+from hyprland_monitor import get_hyprland_monitor, init_hyprland_monitor
+from lock_manager import get_lock_manager, init_lock_manager
+from scheduler import get_scheduler, init_scheduler
 from service_enforcer import ensure_service_enabled
+from sqlalchemy import select
 from watchdog import WatchdogManager
+
+from config import get_config, get_config_path
+
 
 # Set up logging
 def setup_logging():
@@ -60,7 +58,7 @@ _shutdown_prevention_cache: bool = False  # Cached shutdown prevention state for
 _watchdog_manager: WatchdogManager = None  # Watchdog manager instance
 
 
-async def get_all_blocks() -> List[Block]:
+async def get_all_blocks() -> list[Block]:
     """Get all blocks from the database."""
     async with _session_factory() as session:
         result = await session.execute(select(Block))

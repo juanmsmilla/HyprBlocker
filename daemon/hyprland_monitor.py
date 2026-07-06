@@ -3,19 +3,17 @@
 import asyncio
 import json
 import logging
-import subprocess
-import sys
 import os
-from typing import Dict, List, Optional, Set
+import sys
 
 # Add daemon directory to Python path for absolute imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import get_config
-from heartbeat_tracker import get_heartbeat_tracker
-from scheduler import get_scheduler
 from blocker import get_app_blocker
 from database import BlockEvent
+from heartbeat_tracker import get_heartbeat_tracker
+
+from config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +30,11 @@ class HyprlandMonitor:
         self._session_factory = session_factory
 
     @property
-    def browser_classes(self) -> List[str]:
+    def browser_classes(self) -> list[str]:
         """Get the list of browser class names from config."""
         return get_config().browsers
 
-    async def get_all_windows(self) -> List[Dict]:
+    async def get_all_windows(self) -> list[dict]:
         """Get all windows from Hyprland.
 
         Returns:
@@ -67,7 +65,7 @@ class HyprlandMonitor:
             logger.error(f"Failed to get windows: {e}")
             return []
 
-    def _is_browser_window(self, window: Dict) -> bool:
+    def _is_browser_window(self, window: dict) -> bool:
         """Check if a window is a browser.
 
         Args:
@@ -79,7 +77,7 @@ class HyprlandMonitor:
         window_class = window.get("class", "").lower()
         return any(browser in window_class for browser in self.browser_classes)
 
-    def _matches_app_rule(self, window: Dict, target: str) -> bool:
+    def _matches_app_rule(self, window: dict, target: str) -> bool:
         """Check if a window matches an application blocking rule.
 
         Args:
@@ -102,7 +100,7 @@ class HyprlandMonitor:
 
         return False
 
-    def count_browser_windows_by_pid(self, windows: List[Dict], pid: int) -> int:
+    def count_browser_windows_by_pid(self, windows: list[dict], pid: int) -> int:
         """Count browser windows for a specific PID.
 
         Args:
@@ -117,9 +115,9 @@ class HyprlandMonitor:
 
     def get_browsers_with_unmonitored_windows(
         self,
-        windows: List[Dict],
-        browser_windows: Dict[int, Dict]
-    ) -> Set[int]:
+        windows: list[dict],
+        browser_windows: dict[int, dict]
+    ) -> set[int]:
         """Find browsers that have more windows than the extension can see.
 
         This detects guest profiles, other profiles without the extension, etc.
@@ -180,7 +178,7 @@ class HyprlandMonitor:
 
         return unmonitored
 
-    async def close_window(self, window: Dict, reason: str = "blocked") -> bool:
+    async def close_window(self, window: dict, reason: str = "blocked") -> bool:
         """Close a window by its address.
 
         Args:
@@ -216,7 +214,7 @@ class HyprlandMonitor:
             logger.error(f"Error closing window: {e}")
             return False
 
-    async def log_block_event(self, target: str, event_type: str, rule_id: Optional[int] = None) -> None:
+    async def log_block_event(self, target: str, event_type: str, rule_id: int | None = None) -> None:
         """Log a blocking event to the database.
 
         Args:
@@ -277,7 +275,7 @@ class HyprlandMonitor:
         windows = await self.get_all_windows()
 
         # Find all browser windows
-        browser_windows: Dict[int, Dict] = {}
+        browser_windows: dict[int, dict] = {}
         for window in windows:
             if self._is_browser_window(window):
                 pid = window.get("pid")
@@ -318,7 +316,7 @@ class HyprlandMonitor:
 
         return closed_count
 
-    async def run_check(self) -> Dict:
+    async def run_check(self) -> dict:
         """Run a complete monitoring check.
 
         Returns:
@@ -337,7 +335,7 @@ class HyprlandMonitor:
 
 
 # Global monitor instance
-_monitor: Optional[HyprlandMonitor] = None
+_monitor: HyprlandMonitor | None = None
 
 
 def init_hyprland_monitor(session_factory) -> HyprlandMonitor:
@@ -347,6 +345,6 @@ def init_hyprland_monitor(session_factory) -> HyprlandMonitor:
     return _monitor
 
 
-def get_hyprland_monitor() -> Optional[HyprlandMonitor]:
+def get_hyprland_monitor() -> HyprlandMonitor | None:
     """Get the global Hyprland monitor instance."""
     return _monitor

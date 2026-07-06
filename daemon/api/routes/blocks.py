@@ -1,22 +1,27 @@
 """Block CRUD API routes."""
 
-from datetime import datetime, timezone
-from typing import List
-
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import UTC, datetime
 
 from database import Block
+from fastapi import APIRouter, Depends, HTTPException
 from lock_manager import get_lock_manager
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from time_verifier import get_time_verifier
-from ..schemas import BlockCreate, BlockUpdate, BlockStrictUpdate, BlockLockExtendRequest, BlockResponse
-from ..deps import get_session, check_block_lock
+
+from ..deps import check_block_lock, get_session
+from ..schemas import (
+    BlockCreate,
+    BlockLockExtendRequest,
+    BlockResponse,
+    BlockStrictUpdate,
+    BlockUpdate,
+)
 
 router = APIRouter(prefix="/api", tags=["blocks"])
 
 
-@router.get("/blocks", response_model=List[BlockResponse])
+@router.get("/blocks", response_model=list[BlockResponse])
 async def get_blocks(session: AsyncSession = Depends(get_session)):
     """Get all blocks."""
     result = await session.execute(select(Block))
@@ -39,7 +44,7 @@ async def create_block(block: BlockCreate, session: AsyncSession = Depends(get_s
         try:
             lock_until = datetime.fromisoformat(block.lock_until)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid lock_until datetime format")
+            raise HTTPException(status_code=400, detail="Invalid lock_until datetime format") from None
 
     db_block = Block(
         name=block.name,
@@ -113,7 +118,7 @@ async def update_block(
             try:
                 db_block.lock_until = datetime.fromisoformat(block.lock_until)
             except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid lock_until datetime format. Expected ISO format like '2024-12-25T14:30'")
+                raise HTTPException(status_code=400, detail="Invalid lock_until datetime format. Expected ISO format like '2024-12-25T14:30'") from None
 
     # Validate that locked_until mode has a lock_until value
     if db_block.lock_mode == 'locked_until' and db_block.lock_until is None:
@@ -258,14 +263,14 @@ async def extend_block_lock(
         raise HTTPException(
             status_code=400,
             detail="Invalid datetime format. Use ISO format like '2024-12-25T14:30:00'"
-        )
+        ) from None
 
     # Handle timezone - compare in UTC
     current_lock_until = db_block.lock_until
     if current_lock_until.tzinfo is None:
-        current_lock_until = current_lock_until.replace(tzinfo=timezone.utc)
+        current_lock_until = current_lock_until.replace(tzinfo=UTC)
     if new_lock_until.tzinfo is None:
-        new_lock_until = new_lock_until.replace(tzinfo=timezone.utc)
+        new_lock_until = new_lock_until.replace(tzinfo=UTC)
 
     # Ensure new lock time is later than current
     if new_lock_until <= current_lock_until:

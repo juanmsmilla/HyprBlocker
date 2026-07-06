@@ -1,6 +1,7 @@
 """Database migrations for schema changes."""
 
 import logging
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 

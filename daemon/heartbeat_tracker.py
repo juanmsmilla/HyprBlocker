@@ -1,11 +1,10 @@
 """Heartbeat tracking for browser extensions."""
 
+import logging
+import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, Set, Optional
-import logging
-import sys
-import os
 
 # Add daemon directory to Python path for absolute imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -20,7 +19,7 @@ class BrowserHeartbeat:
     """Represents a browser's heartbeat state."""
     browser: str
     last_seen: datetime
-    incognito_last_seen: Optional[datetime] = None
+    incognito_last_seen: datetime | None = None
     incognito_enabled: bool = True
     window_mismatch_count: int = 0  # Consecutive mismatches with Hyprland count
 
@@ -41,13 +40,13 @@ class HeartbeatTracker:
 
     def __init__(self):
         # {pid: BrowserHeartbeat}
-        self.active_browsers: Dict[int, BrowserHeartbeat] = {}
+        self.active_browsers: dict[int, BrowserHeartbeat] = {}
         # Track extension instances per PID: {pid: {extension_id: ExtensionInstance}}
-        self.extension_instances: Dict[int, Dict[str, ExtensionInstance]] = {}
+        self.extension_instances: dict[int, dict[str, ExtensionInstance]] = {}
         # Grace period for adding extensions
-        self._grace_period_until: Optional[datetime] = None
+        self._grace_period_until: datetime | None = None
         # Track when PIDs are first seen from Hyprland (for per-PID grace period)
-        self._first_seen_pids: Dict[int, datetime] = {}
+        self._first_seen_pids: dict[int, datetime] = {}
 
     @property
     def heartbeat_timeout(self) -> int:
@@ -101,7 +100,7 @@ class HeartbeatTracker:
             self._first_seen_pids[pid] = datetime.now()
             logger.info(f"First time seeing browser PID {pid}, starting {self.NEW_BROWSER_GRACE_SECONDS}s grace period")
 
-    def get_grace_period_remaining(self) -> Optional[int]:
+    def get_grace_period_remaining(self) -> int | None:
         """Get remaining seconds in the grace period.
 
         Returns:
@@ -162,7 +161,7 @@ class HeartbeatTracker:
                 f"(PID: {pid}, windows: {window_count})"
             )
 
-    def get_compliant_browsers(self) -> Set[int]:
+    def get_compliant_browsers(self) -> set[int]:
         """Get PIDs of browsers with recent heartbeats.
 
         Returns:
@@ -178,7 +177,7 @@ class HeartbeatTracker:
 
         return compliant
 
-    def get_non_compliant_browsers(self, all_browser_pids: Set[int]) -> Set[int]:
+    def get_non_compliant_browsers(self, all_browser_pids: set[int]) -> set[int]:
         """Find browsers without recent heartbeats.
 
         Args:
@@ -208,7 +207,7 @@ class HeartbeatTracker:
 
         return truly_non_compliant
 
-    def get_total_extension_window_count(self, pid: int) -> Optional[int]:
+    def get_total_extension_window_count(self, pid: int) -> int | None:
         """Get the total window count from all extension instances for a PID.
 
         Sums window counts from all extension instances (profiles) for this browser.
@@ -255,7 +254,7 @@ class HeartbeatTracker:
         if pid in self.active_browsers:
             self.active_browsers[pid].window_mismatch_count = 0
 
-    def get_browsers_missing_incognito_heartbeat(self) -> Set[int]:
+    def get_browsers_missing_incognito_heartbeat(self) -> set[int]:
         """Find browsers that have incognito windows but no recent incognito heartbeat.
 
         Returns:
@@ -317,7 +316,7 @@ class HeartbeatTracker:
             del self._first_seen_pids[pid]
             logger.debug(f"Removed stale first-seen entry for PID {pid}")
 
-    def get_browser_status(self, pid: int) -> Optional[Dict]:
+    def get_browser_status(self, pid: int) -> dict | None:
         """Get the status of a specific browser.
 
         Args:
@@ -364,7 +363,7 @@ class HeartbeatTracker:
 
 
 # Global heartbeat tracker instance
-_tracker: Optional[HeartbeatTracker] = None
+_tracker: HeartbeatTracker | None = None
 
 
 def get_heartbeat_tracker() -> HeartbeatTracker:

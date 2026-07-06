@@ -14,12 +14,12 @@ import string
 import subprocess
 import sys
 import time
-import urllib.request
 import urllib.error
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+import urllib.request
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +95,8 @@ class WatchdogState:
     """Persistent state shared between watchdog processes."""
     enabled: bool = True
     watchdog_count: int = 3
-    watchdogs: List[Dict[str, Any]] = None
-    daemon_pid: Optional[int] = None
+    watchdogs: list[dict[str, Any]] = None
+    daemon_pid: int | None = None
     shutdown_requested: bool = False
 
     def __post_init__(self):
@@ -104,13 +104,13 @@ class WatchdogState:
             self.watchdogs = []
 
     @classmethod
-    def load(cls) -> "WatchdogState":
+    def load(cls) -> WatchdogState:
         """Load state from file."""
         if not WATCHDOG_STATE_FILE.exists():
             return cls()
 
         try:
-            with open(WATCHDOG_STATE_FILE, 'r') as f:
+            with open(WATCHDOG_STATE_FILE) as f:
                 data = json.load(f)
             return cls(**data)
         except (json.JSONDecodeError, TypeError) as e:
@@ -124,13 +124,13 @@ class WatchdogState:
             json.dump(asdict(self), f, indent=2)
 
 
-def read_config_lock_until() -> Optional[datetime]:
+def read_config_lock_until() -> datetime | None:
     """Read settings_lock_until from config file."""
     try:
         if not CONFIG_FILE.exists():
             return None
 
-        with open(CONFIG_FILE, 'r') as f:
+        with open(CONFIG_FILE) as f:
             data = json.load(f)
 
         lock_until_str = data.get('security', {}).get('settings_lock_until')
@@ -161,11 +161,11 @@ def is_settings_locked_ntp() -> bool:
         for server in ntp_servers:
             try:
                 response = ntp_client.request(server, timeout=5)
-                ntp_time = datetime.fromtimestamp(response.tx_time, tz=timezone.utc)
+                ntp_time = datetime.fromtimestamp(response.tx_time, tz=UTC)
 
                 # Compare with lock_until (ensure timezone awareness)
                 if lock_until.tzinfo is None:
-                    lock_until = lock_until.replace(tzinfo=timezone.utc)
+                    lock_until = lock_until.replace(tzinfo=UTC)
 
                 return ntp_time < lock_until
             except Exception:
@@ -177,9 +177,9 @@ def is_settings_locked_ntp() -> bool:
 
     except ImportError:
         # ntplib not available, use system time
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if lock_until.tzinfo is None:
-            lock_until = lock_until.replace(tzinfo=timezone.utc)
+            lock_until = lock_until.replace(tzinfo=UTC)
         return now < lock_until
 
 
@@ -228,9 +228,9 @@ class WatchdogManager:
     def __init__(self, watchdog_count: int = 3, daemon_port: int = 8765):
         self.watchdog_count = max(2, min(5, watchdog_count))  # Clamp to 2-5
         self.daemon_port = daemon_port
-        self._spawned_pids: List[int] = []
+        self._spawned_pids: list[int] = []
 
-    def spawn_watchdogs(self) -> List[int]:
+    def spawn_watchdogs(self) -> list[int]:
         """Fork watchdog processes with obfuscated names.
 
         Returns list of spawned PIDs.
@@ -281,7 +281,7 @@ class WatchdogManager:
                 else:
                     # Parent process
                     pids.append(pid)
-                    now = datetime.now(timezone.utc).isoformat()
+                    now = datetime.now(UTC).isoformat()
                     state.watchdogs.append({
                         "pid": pid,
                         "name": name,
@@ -310,7 +310,7 @@ class WatchdogManager:
         state.save()
         logger.info("Signaled watchdogs to shutdown")
 
-    def get_active_watchdogs(self) -> List[Dict[str, Any]]:
+    def get_active_watchdogs(self) -> list[dict[str, Any]]:
         """Get list of active watchdog processes with their info."""
         state = WatchdogState.load()
         active = []
@@ -319,7 +319,7 @@ class WatchdogManager:
             if is_process_alive(wd["pid"]):
                 # Calculate uptime
                 started = datetime.fromisoformat(wd["started"])
-                uptime = (datetime.now(timezone.utc) - started).total_seconds()
+                uptime = (datetime.now(UTC) - started).total_seconds()
                 active.append({
                     "pid": wd["pid"],
                     "name": wd["name"],
@@ -419,7 +419,7 @@ class Watchdog:
     def _check_and_respawn_siblings(self) -> None:
         """Check sibling watchdogs and respawn any that are dead."""
         state = WatchdogState.load()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         my_pid = os.getpid()
 
         # Clean up stale entries and check for missing siblings
@@ -498,7 +498,7 @@ class Watchdog:
         """Update this watchdog's heartbeat in the state file."""
         state = WatchdogState.load()
         my_pid = os.getpid()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         for wd in state.watchdogs:
             if wd["pid"] == my_pid:

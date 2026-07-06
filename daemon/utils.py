@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-from typing import Optional
 
 
 def show_notification(title: str, message: str, urgency: str = "normal") -> bool:

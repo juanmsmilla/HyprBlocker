@@ -2,13 +2,11 @@
 """Main entry point for the Website Blocker desktop application."""
 
 import argparse
-import json
 import os
 import subprocess
 import sys
 
 import webview
-
 from api_client import DaemonClient
 
 
@@ -66,7 +64,7 @@ class API:
     def update_block(self, block_id: int, updates: dict) -> dict:
         """Update a block."""
         try:
-            print(f"\n[PyWebView Bridge] update_block called:")
+            print("\n[PyWebView Bridge] update_block called:")
             print(f"  block_id: {block_id} (type: {type(block_id)})")
             print(f"  updates: {updates}")
             print(f"  updates keys: {list(updates.keys())}")
@@ -549,7 +547,7 @@ def main():
             sys.exit(1)
 
     # Create the window
-    window = webview.create_window(
+    webview.create_window(
         title='Website Blocker',
         url=url,
         js_api=api,

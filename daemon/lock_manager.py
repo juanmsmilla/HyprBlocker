@@ -1,16 +1,15 @@
 """Lock mode management for the website blocker daemon."""
 
-from datetime import datetime
-from typing import List, Optional
 import logging
-import sys
 import os
+import sys
+from datetime import datetime
 
 # Add daemon directory to Python path for absolute imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from sqlalchemy import select
 from database import Block
+from sqlalchemy import select
 from time_verifier import get_time_verifier
 
 logger = logging.getLogger(__name__)
@@ -62,7 +61,7 @@ class LockManager:
 
         return False
 
-    def _get_next_unlock_time(self, block, now: datetime) -> Optional[datetime]:
+    def _get_next_unlock_time(self, block, now: datetime) -> datetime | None:
         """Get when the current lock period will end for a block.
 
         Args:
@@ -95,7 +94,7 @@ class LockManager:
 
         return False
 
-    async def get_locked_blocks_for_rule(self, rule_id: int) -> List[int]:
+    async def get_locked_blocks_for_rule(self, rule_id: int) -> list[int]:
         """Get list of locked block IDs that contain a specific rule.
 
         Args:
@@ -157,7 +156,7 @@ class LockManager:
 
 
 # Global lock manager instance
-_lock_manager: Optional[LockManager] = None
+_lock_manager: LockManager | None = None
 
 
 def init_lock_manager(get_blocks_func, session_factory=None) -> LockManager:
@@ -167,6 +166,6 @@ def init_lock_manager(get_blocks_func, session_factory=None) -> LockManager:
     return _lock_manager
 
 
-def get_lock_manager() -> Optional[LockManager]:
+def get_lock_manager() -> LockManager | None:
     """Get the global lock manager instance."""
     return _lock_manager

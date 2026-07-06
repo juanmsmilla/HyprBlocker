@@ -1,8 +1,6 @@
 """Shared dependencies for the website blocker API."""
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from lock_manager import get_lock_manager
 
 # Session factory - will be set during startup

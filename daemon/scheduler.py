@@ -1,14 +1,13 @@
 """Block schedule management and checking for the website blocker daemon."""
 
-from datetime import datetime, time as dt_time
-from typing import List, Set
 import json
 import logging
-import sys
 import os
+import sys
+from datetime import datetime
+from datetime import time as dt_time
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 # Add daemon directory to Python path for absolute imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -28,14 +27,14 @@ class BlockChecker:
             session_factory: Async session factory for database access
         """
         self._session_factory = session_factory
-        self._active_blocks: Set[int] = set()
+        self._active_blocks: set[int] = set()
 
     def _parse_time(self, time_str: str) -> dt_time:
         """Parse a time string like '09:00' into a time object."""
         parts = time_str.split(':')
         return dt_time(int(parts[0]), int(parts[1]))
 
-    def _parse_days_of_week(self, days_of_week: str) -> List[int]:
+    def _parse_days_of_week(self, days_of_week: str) -> list[int]:
         """Parse days of week string into list of integers.
 
         Handles both JSON arrays like "[0,1,2]" and comma-separated strings like "0,1,2".
@@ -125,7 +124,7 @@ class BlockChecker:
 
         return False
 
-    async def get_active_blocks(self) -> List[Block]:
+    async def get_active_blocks(self) -> list[Block]:
         """Get all currently active blocks based on schedules.
 
         Returns:
@@ -144,7 +143,7 @@ class BlockChecker:
 
         return active_blocks
 
-    async def check_schedules(self) -> Set[int]:
+    async def check_schedules(self) -> set[int]:
         """Check all blocks and return set of active block IDs.
 
         This method should be called periodically to update the active blocks.
@@ -170,7 +169,7 @@ class BlockChecker:
 
 
 # Global checker instance
-_scheduler: 'BlockChecker | None' = None
+_scheduler: BlockChecker | None = None
 
 
 def init_scheduler(session_factory) -> BlockChecker:
@@ -180,6 +179,6 @@ def init_scheduler(session_factory) -> BlockChecker:
     return _scheduler
 
 
-def get_scheduler() -> 'BlockChecker | None':
+def get_scheduler() -> BlockChecker | None:
     """Get the global block checker instance."""
     return _scheduler

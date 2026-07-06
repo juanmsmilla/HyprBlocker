@@ -1,16 +1,15 @@
 """Status, stats, browsers, and blocked-sites API routes."""
 
 from datetime import datetime
-from typing import List
-
-from fastapi import APIRouter, Depends
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import Block, BlockEvent
+from fastapi import APIRouter, Depends
 from heartbeat_tracker import get_heartbeat_tracker
-from ..schemas import StatusResponse, StatsResponse, BrowserStatus
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ..deps import get_session
+from ..schemas import BrowserStatus, StatsResponse, StatusResponse
 
 router = APIRouter(prefix="/api", tags=["status"])
 
@@ -22,7 +21,7 @@ async def get_status(session: AsyncSession = Depends(get_session)):
 
     # Count active blocks
     result = await session.execute(
-        select(func.count(Block.id)).where(Block.enabled == True)
+        select(func.count(Block.id)).where(Block.enabled.is_(True))
     )
     active_blocks = result.scalar() or 0
 
@@ -98,7 +97,7 @@ async def get_stats(session: AsyncSession = Depends(get_session)):
     )
 
 
-@router.get("/browsers", response_model=List[BrowserStatus])
+@router.get("/browsers", response_model=list[BrowserStatus])
 async def get_browsers():
     """Get detected browsers and extension status."""
     tracker = get_heartbeat_tracker()
@@ -126,6 +125,7 @@ async def get_blocked_sites():
     intersection-based allow list logic.
     """
     from scheduler import get_scheduler
+
     from config import get_config
 
     scheduler = get_scheduler()

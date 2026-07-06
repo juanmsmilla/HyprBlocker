@@ -3,6 +3,7 @@
 
 # CRITICAL: Set backend BEFORE importing pystray
 import os
+
 os.environ["PYSTRAY_BACKEND"] = "appindicator"
 
 import subprocess
@@ -10,11 +11,10 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
 
+import pystray
 import requests
 from PIL import Image
-import pystray
 
 
 @dataclass
@@ -45,7 +45,7 @@ class DaemonClient:
         except requests.RequestException:
             return False
 
-    def get_status(self) -> Optional[DaemonStatus]:
+    def get_status(self) -> DaemonStatus | None:
         """Get the daemon status."""
         try:
             response = requests.get(
@@ -65,7 +65,7 @@ class TrayApp:
 
     def __init__(self):
         self.client = DaemonClient()
-        self.icon: Optional[pystray.Icon] = None
+        self.icon: pystray.Icon | None = None
         self.running = True
         self._status_text = "Checking..."
 

@@ -1,6 +1,6 @@
 """Pydantic models for the website blocker API."""
 
-from typing import List, Optional
+
 from pydantic import BaseModel
 
 
@@ -11,7 +11,7 @@ class HeartbeatRequest(BaseModel):
     incognito_enabled: bool = True
     extension_id: str  # Unique per browser profile
     window_count: int  # Windows visible to this extension
-    timestamp: Optional[int] = None
+    timestamp: int | None = None
 
 
 class HeartbeatResponse(BaseModel):
@@ -21,29 +21,29 @@ class HeartbeatResponse(BaseModel):
 class BlockCreate(BaseModel):
     name: str
     block_mode: str = 'always'  # 'always', 'time_range', 'disabled'
-    block_days_of_week: Optional[str] = None  # JSON array
-    block_start_time: Optional[str] = None
-    block_end_time: Optional[str] = None
+    block_days_of_week: str | None = None  # JSON array
+    block_start_time: str | None = None
+    block_end_time: str | None = None
     lock_mode: str = 'none'  # 'none', 'locked_until'
-    lock_until: Optional[str] = None  # ISO format datetime
+    lock_until: str | None = None  # ISO format datetime
     enabled: bool = True
-    websites_blocked: Optional[str] = None  # Newline-separated list
-    websites_allowed: Optional[str] = None  # Newline-separated allow list
-    apps_blocked: Optional[str] = None      # Newline-separated list
+    websites_blocked: str | None = None  # Newline-separated list
+    websites_allowed: str | None = None  # Newline-separated allow list
+    apps_blocked: str | None = None      # Newline-separated list
 
 
 class BlockUpdate(BaseModel):
-    name: Optional[str] = None
-    block_mode: Optional[str] = None
-    block_days_of_week: Optional[str] = None
-    block_start_time: Optional[str] = None
-    block_end_time: Optional[str] = None
-    lock_mode: Optional[str] = None
-    lock_until: Optional[str] = None
-    enabled: Optional[bool] = None
-    websites_blocked: Optional[str] = None
-    websites_allowed: Optional[str] = None
-    apps_blocked: Optional[str] = None
+    name: str | None = None
+    block_mode: str | None = None
+    block_days_of_week: str | None = None
+    block_start_time: str | None = None
+    block_end_time: str | None = None
+    lock_mode: str | None = None
+    lock_until: str | None = None
+    enabled: bool | None = None
+    websites_blocked: str | None = None
+    websites_allowed: str | None = None
+    apps_blocked: str | None = None
 
 
 class BlockStrictUpdate(BaseModel):
@@ -53,9 +53,9 @@ class BlockStrictUpdate(BaseModel):
     - Adding items to blocked lists
     - Removing items from allowed lists
     """
-    websites_blocked_add: Optional[str] = None      # Newline-separated items to ADD to blocked
-    apps_blocked_add: Optional[str] = None          # Newline-separated items to ADD to blocked
-    websites_allowed_remove: Optional[str] = None   # Newline-separated items to REMOVE from allowed
+    websites_blocked_add: str | None = None      # Newline-separated items to ADD to blocked
+    apps_blocked_add: str | None = None          # Newline-separated items to ADD to blocked
+    websites_allowed_remove: str | None = None   # Newline-separated items to REMOVE from allowed
 
 
 class BlockLockExtendRequest(BaseModel):
@@ -67,14 +67,14 @@ class BlockResponse(BaseModel):
     id: int
     name: str
     block_mode: str
-    block_days_of_week: Optional[str]
-    block_start_time: Optional[str]
-    block_end_time: Optional[str]
+    block_days_of_week: str | None
+    block_start_time: str | None
+    block_end_time: str | None
     lock_mode: str
-    lock_until: Optional[str]
-    websites_blocked: Optional[str]
-    websites_allowed: Optional[str]
-    apps_blocked: Optional[str]
+    lock_until: str | None
+    websites_blocked: str | None
+    websites_allowed: str | None
+    apps_blocked: str | None
     enabled: bool
     created_at: str
 
@@ -110,8 +110,8 @@ class BrowserStatus(BaseModel):
 
 class GracePeriodResponse(BaseModel):
     active: bool
-    expires_at: Optional[str]
-    remaining_seconds: Optional[int]
+    expires_at: str | None
+    remaining_seconds: int | None
 
 
 class BrowserEnforcementStatusResponse(BaseModel):
@@ -144,18 +144,18 @@ class ShutdownPreventionUpdateRequest(BaseModel):
 class WatchdogStatusResponse(BaseModel):
     enabled: bool
     count: int
-    active_watchdogs: List[dict]  # [{pid, name, uptime_seconds}]
+    active_watchdogs: list[dict]  # [{pid, name, uptime_seconds}]
 
 
 class WatchdogUpdateRequest(BaseModel):
-    enabled: Optional[bool] = None
-    count: Optional[int] = None
+    enabled: bool | None = None
+    count: int | None = None
 
 
 class SettingsLockResponse(BaseModel):
     locked: bool
-    lock_until: Optional[str]  # ISO datetime
-    remaining_seconds: Optional[int]
+    lock_until: str | None  # ISO datetime
+    remaining_seconds: int | None
 
 
 class SettingsLockRequest(BaseModel):

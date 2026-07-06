@@ -1,10 +1,9 @@
 """Configuration management for the website blocker daemon."""
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class MonitoringConfig:
 class SecurityConfig:
     """Security-related configuration."""
 
-    ntp_servers: List[str] = field(
+    ntp_servers: list[str] = field(
         default_factory=lambda: [
             "pool.ntp.org",
             "time.google.com",
@@ -49,7 +48,7 @@ class SecurityConfig:
     )
     watchdog_enabled: bool = False  # Enable watchdog processes for resilience
     watchdog_count: int = 3  # Number of watchdog processes (2-5)
-    settings_lock_until: Optional[str] = (
+    settings_lock_until: str | None = (
         None  # ISO datetime string when settings lock expires
     )
 
@@ -61,7 +60,7 @@ class Config:
     daemon: DaemonConfig = field(default_factory=DaemonConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
-    browsers: List[str] = field(
+    browsers: list[str] = field(
         default_factory=lambda: [
             "firefox",
             "firefox-esr",
@@ -88,7 +87,7 @@ def load_config() -> Config:
 
     if os.path.exists(config_path):
         try:
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 data = json.load(f)
 
             # Migrate old dev_mode to browser_enforcement_enabled
@@ -159,7 +158,7 @@ def save_config(config: Config) -> None:
 
 
 # Global config instance
-_config: Optional[Config] = None
+_config: Config | None = None
 
 
 def get_config() -> Config:
