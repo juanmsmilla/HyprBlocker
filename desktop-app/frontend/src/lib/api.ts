@@ -7,6 +7,7 @@ import type {
   ApiResponse,
   LockStatusResponse,
   Stats,
+  StatsDetails,
   BrowserStatus,
   GracePeriodResponse,
   GracePeriodStatus,
@@ -78,6 +79,11 @@ export const api = {
   async getStats(): Promise<Stats> {
     await waitForPywebview();
     return window.pywebview.api.get_stats();
+  },
+
+  async getStatsDetails(): Promise<StatsDetails> {
+    await waitForPywebview();
+    return window.pywebview.api.get_stats_details();
   },
 
   async getBrowsers(): Promise<BrowserStatus[]> {
@@ -205,4 +211,19 @@ export function formatTime(dateStr: string | null): string {
 // Helper to capitalize first letter
 export function capitalizeFirst(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+// Browser icon mapping (shared by Dashboard and Browsers pages)
+const BROWSER_ICONS: Record<string, string> = {
+  firefox: '🦊',
+  chrome: '🌐',
+  chromium: '🌐',
+  brave: '🦁',
+  edge: '🌊',
+  opera: '🎭',
+  vivaldi: '🎨',
+};
+
+export function getBrowserIcon(browser: string): string {
+  return BROWSER_ICONS[browser.toLowerCase()] || '🌐';
 }

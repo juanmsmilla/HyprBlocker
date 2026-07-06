@@ -7,11 +7,14 @@ import { BlocksTable } from '../components/blocks/BlocksTable';
 import { BlockModal } from '../components/blocks/BlockModal';
 import { LockModal } from '../components/blocks/LockModal';
 import { AddRulesModal } from '../components/blocks/AddRulesModal';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { PageLoading } from '../components/ui/PageLoading';
 import { api } from '../lib/api';
+import { formatRuleCount } from '../lib/blocks';
 import type { Block } from '../types';
 
 export function Blocks() {
-  const { blocks, refreshBlocks } = useStatus();
+  const { blocks, loading, refreshBlocks } = useStatus();
   const { showToast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBlock, setEditingBlock] = useState<Block | null>(null);
@@ -19,6 +22,7 @@ export function Blocks() {
   const [lockingBlock, setLockingBlock] = useState<Block | null>(null);
   const [isAddRulesModalOpen, setIsAddRulesModalOpen] = useState(false);
   const [addRulesBlock, setAddRulesBlock] = useState<Block | null>(null);
+  const [deletingBlock, setDeletingBlock] = useState<Block | null>(null);
 
   const handleAddBlock = () => {
     setEditingBlock(null);
@@ -70,12 +74,17 @@ export function Blocks() {
         showToast('This block is currently locked', 'warning');
         return;
       }
+      setDeletingBlock(block);
+    } catch (error) {
+      console.error('Failed to check lock status:', error);
+      showToast('Failed to check lock status', 'error');
+    }
+  };
 
-      if (!confirm('Are you sure you want to delete this block?')) {
-        return;
-      }
-
-      const result = await api.deleteBlock(block.id);
+  const confirmDeleteBlock = async () => {
+    if (!deletingBlock) return;
+    try {
+      const result = await api.deleteBlock(deletingBlock.id);
       if (result.success) {
         showToast('Block deleted', 'success');
         await refreshBlocks();
@@ -85,6 +94,8 @@ export function Blocks() {
     } catch (error) {
       console.error('Failed to delete block:', error);
       showToast('Failed to delete block', 'error');
+    } finally {
+      setDeletingBlock(null);
     }
   };
 
@@ -108,6 +119,8 @@ export function Blocks() {
     setAddRulesBlock(null);
   };
 
+  if (loading) return <PageLoading />;
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -128,6 +141,23 @@ export function Blocks() {
         onToggle={handleToggleBlock}
         onDelete={handleDeleteBlock}
         onLock={handleLockBlock}
+        onAdd={handleAddBlock}
+      />
+
+      <ConfirmDialog
+        isOpen={deletingBlock !== null}
+        title="Delete Block"
+        message={
+          deletingBlock ? (
+            <p>
+              Delete <strong className="text-text">{deletingBlock.name}</strong> and its{' '}
+              {formatRuleCount(deletingBlock)}? This cannot be undone.
+            </p>
+          ) : null
+        }
+        confirmLabel="Delete"
+        onConfirm={confirmDeleteBlock}
+        onCancel={() => setDeletingBlock(null)}
       />
 
       <BlockModal

@@ -1,43 +1,50 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Plus, Clock, AlertTriangle } from 'lucide-react';
 import { useStatus } from '../context/StatusContext';
 import { useToast } from '../context/ToastContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { api, capitalizeFirst, formatTime } from '../lib/api';
-
-// Browser icon mapping
-function getBrowserIcon(browser: string): string {
-  const icons: Record<string, string> = {
-    firefox: '\uD83D\uDD25',
-    chrome: '\uD83D\uDD34',
-    chromium: '\uD83D\uDD35',
-    brave: '\uD83E\uDD81',
-    edge: '\uD83D\uDD36',
-    opera: '\uD83C\uDFB5',
-    vivaldi: '\uD83C\uDFB6',
-  };
-  return icons[browser.toLowerCase()] || '\uD83C\uDF10';
-}
+import { PageLoading } from '../components/ui/PageLoading';
+import { api, capitalizeFirst, formatTime, getBrowserIcon } from '../lib/api';
+import type { GracePeriodStatus } from '../types';
 
 export function Browsers() {
-  const { browsers, refreshBrowsers } = useStatus();
+  const { browsers, loading, refreshBrowsers } = useStatus();
   const { showToast } = useToast();
-  const [gracePeriodActive, setGracePeriodActive] = useState(false);
-  const [gracePeriodSeconds, setGracePeriodSeconds] = useState(0);
+  const [gracePeriod, setGracePeriod] = useState<GracePeriodStatus | null>(null);
+
+  const refreshGracePeriod = useCallback(async () => {
+    try {
+      const status = await api.getGracePeriodStatus();
+      setGracePeriod(status);
+    } catch (error) {
+      console.error('Failed to get grace period status:', error);
+    }
+  }, []);
+
+  // The daemon owns the grace period, so the countdown survives navigating
+  // away and reflects grace periods started elsewhere (e.g. the tray app).
+  useEffect(() => {
+    const load = async () => {
+      await refreshGracePeriod();
+    };
+    load();
+    const interval = setInterval(load, gracePeriod?.active ? 1000 : 5000);
+    return () => clearInterval(interval);
+  }, [refreshGracePeriod, gracePeriod?.active]);
 
   const handleRefresh = async () => {
     await refreshBrowsers();
+    await refreshGracePeriod();
   };
 
   const startGracePeriod = async () => {
     try {
       const result = await api.startExtensionGracePeriod();
-      if (result.success && result.remaining_seconds) {
-        setGracePeriodActive(true);
-        setGracePeriodSeconds(result.remaining_seconds);
+      if (result.success) {
         showToast('Grace period started - you have 30 seconds to add the extension', 'success');
+        await refreshGracePeriod();
       } else {
         showToast(result.error || 'Failed to start grace period', 'error');
       }
@@ -47,23 +54,10 @@ export function Browsers() {
     }
   };
 
-  // Grace period countdown
-  useEffect(() => {
-    if (!gracePeriodActive || gracePeriodSeconds <= 0) return;
+  if (loading) return <PageLoading />;
 
-    const interval = setInterval(() => {
-      setGracePeriodSeconds((prev) => {
-        if (prev <= 1) {
-          setGracePeriodActive(false);
-          showToast('Grace period ended', 'info');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [gracePeriodActive, gracePeriodSeconds, showToast]);
+  const nonCompliantCount = browsers.filter((b) => !b.incognito_enabled).length;
+  const allCompliant = browsers.length > 0 && browsers.every((b) => b.compliant);
 
   return (
     <div>
@@ -82,28 +76,28 @@ export function Browsers() {
       </div>
 
       {/* Grace Period Banner */}
-      {gracePeriodActive && (
+      {gracePeriod?.active && (
         <div className="bg-warning/20 border border-warning rounded-lg px-4 py-3 mb-4 flex items-center gap-2">
           <Clock size={18} className="text-warning" />
           <span className="flex-1 text-text">Grace period active - browser enforcement paused</span>
-          <span className="font-bold text-warning">{gracePeriodSeconds}s</span>
+          <span className="font-bold text-warning">{gracePeriod.remaining_seconds}s</span>
         </div>
       )}
 
       {/* Incognito Permission Warning */}
-      {browsers.filter(b => !b.incognito_enabled).length > 0 && (
+      {nonCompliantCount > 0 && (
         <div className="bg-danger/20 border border-danger rounded-lg px-4 py-3 mb-4">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle size={18} className="text-danger" />
             <span className="font-bold text-danger">Incognito Permission Required</span>
           </div>
           <p className="text-text-secondary mb-2">
-            {browsers.filter(b => !b.incognito_enabled).length} browser(s) are NON-COMPLIANT
-            because they don't have incognito permission
+            {nonCompliantCount} browser(s) are NON-COMPLIANT because they don't have incognito
+            permission
           </p>
           <p className="text-text-secondary text-sm">
-            To fix: Open chrome://extensions/, find "Website Blocker",
-            and enable "Allow in Incognito"
+            To fix: Open chrome://extensions/, find "Website Blocker", and enable "Allow in
+            Incognito"
           </p>
         </div>
       )}
@@ -150,25 +144,27 @@ export function Browsers() {
         )}
       </div>
 
-      {/* Extension Info */}
-      <Card title="Extension Setup">
-        <p className="text-text-secondary mb-4">
-          The browser extension is required for website blocking to work. Install it in each
-          browser you use.
-        </p>
-        <ol className="list-decimal list-inside space-y-3 text-text">
-          <li>Click "Add Extension" to start a grace period</li>
-          <li>Open your browser's extension settings</li>
-          <li>Enable "Developer mode"</li>
-          <li>
-            Load the extension from:{' '}
-            <code className="bg-bg-secondary px-2 py-1 rounded text-accent-green text-sm">
-              ~/.local/share/website-blocker/extension
-            </code>
-          </li>
-          <li>Enable the extension in incognito/private mode</li>
-        </ol>
-      </Card>
+      {/* Extension Info - only shown while setup is still needed */}
+      {!allCompliant && (
+        <Card title="Extension Setup">
+          <p className="text-text-secondary mb-4">
+            The browser extension is required for website blocking to work. Install it in each
+            browser you use.
+          </p>
+          <ol className="list-decimal list-inside space-y-3 text-text">
+            <li>Click "Add Extension" to start a grace period</li>
+            <li>Open your browser's extension settings</li>
+            <li>Enable "Developer mode"</li>
+            <li>
+              Load the extension from:{' '}
+              <code className="bg-bg-secondary px-2 py-1 rounded text-accent-green text-sm">
+                ~/.local/share/website-blocker/extension
+              </code>
+            </li>
+            <li>Enable the extension in incognito/private mode</li>
+          </ol>
+        </Card>
+      )}
     </div>
   );
 }

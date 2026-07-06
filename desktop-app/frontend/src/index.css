@@ -27,6 +27,9 @@
   --color-accent-cyan: #299999;
   --color-accent-yellow: #bbb529;
 
+  /* Data marks - validated for contrast/chroma against --color-bg-card */
+  --color-chart: #4a8ecb;
+
   /* Semantic colors */
   --color-success: #6a8759;
   --color-warning: #cc7832;

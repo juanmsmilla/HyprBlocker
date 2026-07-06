@@ -8,8 +8,16 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
+const PAGES: Page[] = ['dashboard', 'blocks', 'stats', 'browsers', 'settings'];
+
+// Initial page can be set via URL hash (e.g. #stats), handy for dev deep-links
+function initialPage(): Page {
+  const hash = window.location.hash.slice(1) as Page;
+  return PAGES.includes(hash) ? hash : 'dashboard';
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [currentPage, setCurrentPage] = useState<Page>(initialPage);
 
   return (
     <AppContext.Provider value={{ currentPage, setCurrentPage }}>

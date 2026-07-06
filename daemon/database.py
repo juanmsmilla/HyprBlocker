@@ -100,7 +100,8 @@ class BlockEvent(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     rule_id = Column(Integer, nullable=True)  # Legacy field, no longer used
     blocked_target = Column(String(500), nullable=False)  # What was blocked
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Local time, matching the local-midnight comparisons in /api/stats
+    timestamp = Column(DateTime, default=datetime.now, nullable=False)
     event_type = Column(
         String(50), nullable=False
     )  # 'website_blocked', 'app_closed', 'browser_killed'

@@ -159,6 +159,13 @@ class API:
             }
         return {}
 
+    def get_stats_details(self) -> dict:
+        """Get detailed statistics (timeline, top targets, recent events)."""
+        details = self.client.get_stats_details()
+        if details:
+            return details
+        return {'timeline': [], 'top_targets': [], 'recent_events': []}
+
     def get_browsers(self) -> list:
         """Get detected browsers and their status."""
         browsers = self.client.get_browsers()

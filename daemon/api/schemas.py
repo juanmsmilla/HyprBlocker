@@ -1,7 +1,7 @@
 """Pydantic models for the website blocker API."""
 
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class HeartbeatRequest(BaseModel):
@@ -78,8 +78,7 @@ class BlockResponse(BaseModel):
     enabled: bool
     created_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StatusResponse(BaseModel):
@@ -97,6 +96,28 @@ class StatsResponse(BaseModel):
     websites_blocked_today: int
     apps_closed_today: int
     browsers_killed_today: int
+
+
+class StatsTimelinePoint(BaseModel):
+    date: str  # YYYY-MM-DD
+    count: int
+
+
+class StatsTopTarget(BaseModel):
+    target: str
+    count: int
+
+
+class StatsRecentEvent(BaseModel):
+    blocked_target: str
+    event_type: str
+    timestamp: str  # ISO datetime
+
+
+class StatsDetailsResponse(BaseModel):
+    timeline: list[StatsTimelinePoint]
+    top_targets: list[StatsTopTarget]
+    recent_events: list[StatsRecentEvent]
 
 
 class BrowserStatus(BaseModel):

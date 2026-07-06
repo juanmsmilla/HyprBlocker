@@ -74,6 +74,7 @@ Tray App + Desktop App + Browser Extension
 - `conftest.py` - Adds `daemon/` to sys.path for imports
 - `test_blocker.py` - URL/app pattern matching and rule parsing
 - `test_scheduler.py` - Schedule logic (day/time parsing, active-block evaluation)
+- `test_stats_api.py` - `/api/stats/details` endpoint (timeline, top targets, recent events)
 - Run with `uv run pytest` (pytest is in the root dev dependency group)
 
 ### Docs (docs/)
@@ -81,6 +82,7 @@ Tray App + Desktop App + Browser Extension
 - `WATCHDOG.md` - Watchdog system deep-dive (linked from README)
 - `TECHNICAL_CONCEPTS.md` - Systemd startup ordering and native messaging writeup
 - `PORTFOLIO_TODO.md` - Remaining portfolio-polish work items
+- `UI_IMPROVEMENTS.md` - Desktop app UI improvement backlog (what's done, what remains)
 
 ### CI & Tooling
 
@@ -146,6 +148,7 @@ timestamp DATETIME
 | `/api/blocks/{id}/strict`      | PATCH          | Add stricter rules (allowed when locked) |
 | `/api/blocks/{id}/lock-status` | GET            | Check if block is locked                 |
 | `/api/stats`                   | GET            | Blocking statistics                      |
+| `/api/stats/details`           | GET            | 14-day timeline, top targets, recent events |
 | `/api/browsers`                | GET            | Browser extension status                 |
 | `/api/heartbeat`               | POST           | Browser extension heartbeat              |
 | `/api/grace-period`            | GET/POST       | Grace period for extension setup         |

@@ -1,6 +1,6 @@
 """Status, stats, browsers, and blocked-sites API routes."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from database import Block, BlockEvent
 from fastapi import APIRouter, Depends
@@ -9,7 +9,15 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..deps import get_session
-from ..schemas import BrowserStatus, StatsResponse, StatusResponse
+from ..schemas import (
+    BrowserStatus,
+    StatsDetailsResponse,
+    StatsRecentEvent,
+    StatsResponse,
+    StatsTimelinePoint,
+    StatsTopTarget,
+    StatusResponse,
+)
 
 router = APIRouter(prefix="/api", tags=["status"])
 
@@ -42,8 +50,8 @@ async def get_status(session: AsyncSession = Depends(get_session)):
 async def get_stats(session: AsyncSession = Depends(get_session)):
     """Get blocking statistics."""
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    week_ago = today.replace(day=today.day - 7) if today.day > 7 else today.replace(month=today.month - 1, day=28)
-    month_ago = today.replace(month=today.month - 1) if today.month > 1 else today.replace(year=today.year - 1, month=12)
+    week_ago = today - timedelta(days=7)
+    month_ago = today - timedelta(days=30)
 
     # Today's stats
     result = await session.execute(
@@ -94,6 +102,57 @@ async def get_stats(session: AsyncSession = Depends(get_session)):
         websites_blocked_today=websites_today,
         apps_closed_today=apps_today,
         browsers_killed_today=browsers_today
+    )
+
+
+@router.get("/stats/details", response_model=StatsDetailsResponse)
+async def get_stats_details(session: AsyncSession = Depends(get_session)):
+    """Get detailed statistics: daily timeline, top blocked targets, recent events."""
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    timeline_start = today - timedelta(days=13)
+    month_start = today - timedelta(days=29)
+
+    # Events per day over the last 14 days (including empty days)
+    result = await session.execute(
+        select(func.date(BlockEvent.timestamp), func.count(BlockEvent.id))
+        .where(BlockEvent.timestamp >= timeline_start)
+        .group_by(func.date(BlockEvent.timestamp))
+    )
+    counts_by_day = {str(date): count for date, count in result.all()}
+    timeline = []
+    for i in range(14):
+        day = (timeline_start + timedelta(days=i)).strftime("%Y-%m-%d")
+        timeline.append(StatsTimelinePoint(date=day, count=counts_by_day.get(day, 0)))
+
+    # Most-blocked targets over the last 30 days
+    result = await session.execute(
+        select(BlockEvent.blocked_target, func.count(BlockEvent.id).label("count"))
+        .where(BlockEvent.timestamp >= month_start)
+        .group_by(BlockEvent.blocked_target)
+        .order_by(func.count(BlockEvent.id).desc())
+        .limit(10)
+    )
+    top_targets = [
+        StatsTopTarget(target=target, count=count) for target, count in result.all()
+    ]
+
+    # Most recent events
+    result = await session.execute(
+        select(BlockEvent).order_by(BlockEvent.timestamp.desc()).limit(15)
+    )
+    recent_events = [
+        StatsRecentEvent(
+            blocked_target=event.blocked_target,
+            event_type=event.event_type,
+            timestamp=event.timestamp.isoformat(),
+        )
+        for event in result.scalars().all()
+    ]
+
+    return StatsDetailsResponse(
+        timeline=timeline,
+        top_targets=top_targets,
+        recent_events=recent_events,
     )
 
 

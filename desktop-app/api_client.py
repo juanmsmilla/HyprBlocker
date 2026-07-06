@@ -321,6 +321,20 @@ class DaemonClient:
             pass
         return None
 
+    def get_stats_details(self) -> dict | None:
+        """Get detailed statistics (timeline, top targets, recent events).
+
+        Returns:
+            Dict with 'timeline', 'top_targets', 'recent_events' or None if unreachable
+        """
+        try:
+            response = self._request('GET', '/api/stats/details')
+            if response.status_code == 200:
+                return response.json()
+        except requests.RequestException:
+            pass
+        return None
+
     def get_browsers(self) -> list[BrowserStatus]:
         """Get detected browsers and their status.
 

@@ -50,6 +50,29 @@ export interface Stats {
   browsers_killed_today: number;
 }
 
+// Detailed statistics
+export interface StatsTimelinePoint {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+export interface StatsTopTarget {
+  target: string;
+  count: number;
+}
+
+export interface StatsRecentEvent {
+  blocked_target: string;
+  event_type: string;
+  timestamp: string;
+}
+
+export interface StatsDetails {
+  timeline: StatsTimelinePoint[];
+  top_targets: StatsTopTarget[];
+  recent_events: StatsRecentEvent[];
+}
+
 // Browser status
 export interface BrowserStatus {
   pid: number;
@@ -200,6 +223,7 @@ declare global {
         get_block_lock_status(block_id: number): Promise<LockStatusResponse>;
         extend_block_lock(block_id: number, lock_until: string): Promise<ApiResponse>;
         get_stats(): Promise<Stats>;
+        get_stats_details(): Promise<StatsDetails>;
         get_browsers(): Promise<BrowserStatus[]>;
         is_daemon_running(): Promise<boolean>;
         start_extension_grace_period(): Promise<GracePeriodResponse>;

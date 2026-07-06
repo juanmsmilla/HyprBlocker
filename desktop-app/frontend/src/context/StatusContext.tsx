@@ -87,10 +87,12 @@ export function StatusProvider({ children }: { children: ReactNode }) {
     const interval = setInterval(() => {
       refreshStatus();
       refreshStats();
+      refreshBlocks();
+      refreshBrowsers();
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [refreshStatus, refreshStats]);
+  }, [refreshStatus, refreshStats, refreshBlocks, refreshBrowsers]);
 
   return (
     <StatusContext.Provider

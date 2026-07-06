@@ -1,7 +1,8 @@
-import { Lock, Unlock } from 'lucide-react';
+import { Lock, Unlock, Plus } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { parseDaysOfWeek, formatDays, formatDate } from '../../lib/api';
+import { getBlockActivity, formatRuleCount } from '../../lib/blocks';
 import type { Block } from '../../types';
 
 interface BlocksTableProps {
@@ -10,6 +11,7 @@ interface BlocksTableProps {
   onToggle: (block: Block) => void;
   onDelete: (block: Block) => void;
   onLock: (block: Block) => void;
+  onAdd: () => void;
 }
 
 function formatBlockMode(block: Block): React.ReactNode {
@@ -63,22 +65,35 @@ function formatLockStatus(block: Block): React.ReactNode {
   );
 }
 
-function countRules(block: Block): number {
-  const websitesCount = block.websites_blocked
-    ? block.websites_blocked.split('\n').filter((s) => s.trim()).length
-    : 0;
-  const appsCount = block.apps_blocked
-    ? block.apps_blocked.split('\n').filter((s) => s.trim()).length
-    : 0;
-  return websitesCount + appsCount;
+function formatActivityStatus(block: Block): React.ReactNode {
+  const activity = getBlockActivity(block);
+
+  if (activity.state === 'active') {
+    return <Badge variant="success">Active now</Badge>;
+  }
+  if (activity.state === 'scheduled') {
+    return (
+      <div>
+        <Badge variant="info">Scheduled</Badge>
+        <div className="text-xs text-text-secondary mt-1">{activity.detail}</div>
+      </div>
+    );
+  }
+  return <Badge variant="default">Off</Badge>;
 }
 
-export function BlocksTable({ blocks, onEdit, onToggle, onDelete, onLock }: BlocksTableProps) {
+export function BlocksTable({ blocks, onEdit, onToggle, onDelete, onLock, onAdd }: BlocksTableProps) {
   if (blocks.length === 0) {
     return (
-      <p className="text-center text-text-secondary py-10">
-        No blocks configured. Add a block to organize your rules.
-      </p>
+      <div className="text-center py-10">
+        <p className="text-text-secondary mb-4">
+          No blocks configured. Add a block to organize your rules.
+        </p>
+        <Button onClick={onAdd}>
+          <Plus size={18} />
+          Add Your First Block
+        </Button>
+      </div>
     );
   }
 
@@ -121,12 +136,8 @@ export function BlocksTable({ blocks, onEdit, onToggle, onDelete, onLock }: Bloc
                   {formatLockStatus(block)}
                 </button>
               </td>
-              <td className="px-4 py-3 text-text">{countRules(block)} rules</td>
-              <td className="px-4 py-3">
-                <Badge variant={block.enabled ? 'success' : 'danger'}>
-                  {block.enabled ? 'Enabled' : 'Disabled'}
-                </Badge>
-              </td>
+              <td className="px-4 py-3 text-text">{formatRuleCount(block)}</td>
+              <td className="px-4 py-3">{formatActivityStatus(block)}</td>
               <td className="px-4 py-3">
                 <div className="flex gap-2">
                   <Button size="small" variant="secondary" onClick={() => onEdit(block)}>
