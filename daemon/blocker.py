@@ -2,9 +2,8 @@
 
 import fnmatch
 import logging
-import sys
 import os
-from typing import List, Optional
+import sys
 
 # Add daemon directory to Python path for absolute imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -14,7 +13,7 @@ from scheduler import get_scheduler
 logger = logging.getLogger(__name__)
 
 
-def parse_rules_from_text(text: Optional[str]) -> List[str]:
+def parse_rules_from_text(text: str | None) -> list[str]:
     """Parse newline-separated rules from text field."""
     if not text:
         return []
@@ -58,11 +57,15 @@ class SiteBlocker:
             # Path-specific matching - URL must match exactly or be a subpath
             return url.startswith(pattern)
         else:
-            # Domain-only pattern - match domain and all subpaths
+            # Domain-only pattern - match domain, subdomains, and all subpaths
             url_domain = url.split('/')[0]
-            return url_domain == pattern or url.startswith(pattern + '/')
+            return (
+                url_domain == pattern
+                or url_domain.endswith('.' + pattern)
+                or url.startswith(pattern + '/')
+            )
 
-    def should_block_url(self, url: str, blocked: List[str], allowed: List[str]) -> bool:
+    def should_block_url(self, url: str, blocked: list[str], allowed: list[str]) -> bool:
         """Check if URL should be blocked.
 
         Allow list takes precedence over block list.
@@ -145,7 +148,7 @@ class SiteBlocker:
         logger.debug(f"URL {url} allowed by all {len(blocking_blocks)} blocking blocks")
         return False
 
-    async def get_blocked_sites(self) -> List[str]:
+    async def get_blocked_sites(self) -> list[str]:
         """Get list of all currently blocked site patterns.
 
         Returns:
@@ -195,7 +198,7 @@ class AppBlocker:
 
         return False
 
-    def should_block_app(self, app_class: str, blocked: List[str], allowed: List[str]) -> bool:
+    def should_block_app(self, app_class: str, blocked: list[str], allowed: list[str]) -> bool:
         """Check if app should be blocked.
 
         Allow list takes precedence over block list.
@@ -250,7 +253,7 @@ class AppBlocker:
         logger.debug(f"App {app_class} not blocked by any block")
         return False
 
-    async def get_blocked_apps(self) -> List[str]:
+    async def get_blocked_apps(self) -> list[str]:
         """Get list of all currently blocked application patterns.
 
         Returns:
@@ -270,8 +273,8 @@ class AppBlocker:
 
 
 # Global blocker instances
-_site_blocker: Optional[SiteBlocker] = None
-_app_blocker: Optional[AppBlocker] = None
+_site_blocker: SiteBlocker | None = None
+_app_blocker: AppBlocker | None = None
 
 
 def get_site_blocker() -> SiteBlocker:
