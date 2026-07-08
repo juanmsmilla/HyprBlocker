@@ -4,8 +4,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="$HOME/.config/website-blocker"
-DATA_DIR="$HOME/.local/share/website-blocker"
+CONFIG_DIR="$HOME/.config/hyprblocker"
+DATA_DIR="$HOME/.local/share/hyprblocker"
 BIN_DIR="$HOME/.local/bin"
 
 usage() {
@@ -24,8 +24,8 @@ usage() {
 
 reinstall_daemon() {
     echo "=== Reinstalling Daemon ==="
-    systemctl --user restart website-blocker
-    echo "Daemon restarted. Check status: systemctl --user status website-blocker"
+    systemctl --user restart hyprblocker
+    echo "Daemon restarted. Check status: systemctl --user status hyprblocker"
 }
 
 reinstall_extension() {
@@ -66,14 +66,14 @@ reinstall_desktop() {
     # Install
     echo "Installing desktop app..."
     mkdir -p "$DATA_DIR/desktop-app-bin"
-    rm -rf "$DATA_DIR/desktop-app-bin/website-blocker"
-    cp -r "$SCRIPT_DIR/dist/website-blocker" "$DATA_DIR/desktop-app-bin/"
+    rm -rf "$DATA_DIR/desktop-app-bin/hyprblocker"
+    cp -r "$SCRIPT_DIR/dist/hyprblocker" "$DATA_DIR/desktop-app-bin/"
 
     # Ensure symlink exists
     mkdir -p "$BIN_DIR"
-    ln -sf "$DATA_DIR/desktop-app-bin/website-blocker/website-blocker" "$BIN_DIR/website-blocker"
+    ln -sf "$DATA_DIR/desktop-app-bin/hyprblocker/hyprblocker" "$BIN_DIR/hyprblocker"
 
-    echo "Desktop app reinstalled at $BIN_DIR/website-blocker"
+    echo "Desktop app reinstalled at $BIN_DIR/hyprblocker"
 }
 
 reinstall_tray() {
@@ -88,10 +88,10 @@ reinstall_tray() {
         --noconfirm
 
     # Install
-    cp "$SCRIPT_DIR/dist/website-blocker-tray" "$BIN_DIR/"
-    chmod +x "$BIN_DIR/website-blocker-tray"
+    cp "$SCRIPT_DIR/dist/hyprblocker-tray" "$BIN_DIR/"
+    chmod +x "$BIN_DIR/hyprblocker-tray"
 
-    echo "Tray app reinstalled at $BIN_DIR/website-blocker-tray"
+    echo "Tray app reinstalled at $BIN_DIR/hyprblocker-tray"
     echo "Restart the tray app or log out/in to apply changes."
 }
 

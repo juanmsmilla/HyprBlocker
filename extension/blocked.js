@@ -1,5 +1,5 @@
 /**
- * Website Blocker - Blocked Page Script
+ * HyprBlocker - Blocked Page Script
  */
 
 // Motivational quotes to display
@@ -96,4 +96,4 @@ function updateTimer() {
 setInterval(updateTimer, 1000);
 
 // Log block to console for debugging
-console.log('Website Blocker: Site blocked -', blockedSite || blockedUrl);
+console.log('HyprBlocker: Site blocked -', blockedSite || blockedUrl);

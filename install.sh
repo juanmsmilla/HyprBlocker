@@ -1,11 +1,11 @@
 #!/bin/bash
-# Website Blocker Installation Script
+# HyprBlocker Installation Script
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="$HOME/.config/website-blocker"
-DATA_DIR="$HOME/.local/share/website-blocker"
+CONFIG_DIR="$HOME/.config/hyprblocker"
+DATA_DIR="$HOME/.local/share/hyprblocker"
 BIN_DIR="$HOME/.local/bin"
 
 # Check for --build flag
@@ -18,11 +18,9 @@ if [ "$1" = "--build" ]; then
     cd "$SCRIPT_DIR/desktop-app/frontend"
     bun run build
 
-    # Sync dependencies
+    # Sync dependencies (single project venv at the repo root)
     echo "Installing build dependencies..."
-    cd "$SCRIPT_DIR/desktop-app"
-    uv sync
-    cd "$SCRIPT_DIR/tray"
+    cd "$SCRIPT_DIR"
     uv sync
 
     # Build executables
@@ -37,15 +35,15 @@ if [ "$1" = "--build" ]; then
     # Install desktop app (onedir mode - copy directory)
     echo "Installing desktop app..."
     mkdir -p "$DATA_DIR/desktop-app-bin"
-    rm -rf "$DATA_DIR/desktop-app-bin/website-blocker"
-    cp -r "$SCRIPT_DIR/dist/website-blocker" "$DATA_DIR/desktop-app-bin/"
+    rm -rf "$DATA_DIR/desktop-app-bin/hyprblocker"
+    cp -r "$SCRIPT_DIR/dist/hyprblocker" "$DATA_DIR/desktop-app-bin/"
 
     # Create symlink in ~/.local/bin
     echo "Creating symlinks in $BIN_DIR..."
     mkdir -p "$BIN_DIR"
-    ln -sf "$DATA_DIR/desktop-app-bin/website-blocker/website-blocker" "$BIN_DIR/website-blocker"
-    cp "$SCRIPT_DIR/dist/website-blocker-tray" "$BIN_DIR/"
-    chmod +x "$BIN_DIR/website-blocker-tray"
+    ln -sf "$DATA_DIR/desktop-app-bin/hyprblocker/hyprblocker" "$BIN_DIR/hyprblocker"
+    cp "$SCRIPT_DIR/dist/hyprblocker-tray" "$BIN_DIR/"
+    chmod +x "$BIN_DIR/hyprblocker-tray"
 
     # Copy icons to installed location
     echo "Installing icons..."
@@ -56,16 +54,16 @@ if [ "$1" = "--build" ]; then
     echo "Installing desktop icon..."
     APPS_DIR="$HOME/.local/share/applications"
     mkdir -p "$APPS_DIR/icons"
-    cp "$SCRIPT_DIR/icons/icon-desktop-256.png" "$APPS_DIR/icons/WebsiteBlocker.png"
+    cp "$SCRIPT_DIR/icons/icon-desktop-256.png" "$APPS_DIR/icons/HyprBlocker.png"
 
     # Create desktop entry
     echo "Creating desktop entry..."
-    cat > "$APPS_DIR/WebsiteBlocker.desktop" << EOF
+    cat > "$APPS_DIR/HyprBlocker.desktop" << EOF
 [Desktop Entry]
-Name=Website Blocker
+Name=HyprBlocker
 Comment=Block distracting websites and applications
-Exec=$DATA_DIR/desktop-app-bin/website-blocker/website-blocker
-Icon=$APPS_DIR/icons/WebsiteBlocker.png
+Exec=$DATA_DIR/desktop-app-bin/hyprblocker/hyprblocker
+Icon=$APPS_DIR/icons/HyprBlocker.png
 Terminal=false
 Type=Application
 Categories=Utility;
@@ -76,11 +74,11 @@ EOF
     echo "Creating autostart entry for tray app..."
     AUTOSTART_DIR="$HOME/.config/autostart"
     mkdir -p "$AUTOSTART_DIR"
-    cat > "$AUTOSTART_DIR/website-blocker-tray.desktop" << EOF
+    cat > "$AUTOSTART_DIR/hyprblocker-tray.desktop" << EOF
 [Desktop Entry]
-Name=Website Blocker Tray
-Comment=Website Blocker System Tray Icon
-Exec=$BIN_DIR/website-blocker-tray
+Name=HyprBlocker Tray
+Comment=HyprBlocker System Tray Icon
+Exec=$BIN_DIR/hyprblocker-tray
 StartupNotify=false
 Terminal=false
 Type=Application
@@ -92,17 +90,17 @@ EOF
     echo "=== Build Complete ==="
     echo ""
     echo "Installed:"
-    echo "  Desktop app: $DATA_DIR/desktop-app-bin/website-blocker/"
-    echo "  Tray app: $BIN_DIR/website-blocker-tray"
-    echo "  Desktop entry: $APPS_DIR/WebsiteBlocker.desktop"
+    echo "  Desktop app: $DATA_DIR/desktop-app-bin/hyprblocker/"
+    echo "  Tray app: $BIN_DIR/hyprblocker-tray"
+    echo "  Desktop entry: $APPS_DIR/HyprBlocker.desktop"
     echo ""
     echo "Tray app will start automatically on login."
-    echo "To start it now: $BIN_DIR/website-blocker-tray &"
+    echo "To start it now: $BIN_DIR/hyprblocker-tray &"
     echo ""
     exit 0
 fi
 
-echo "=== Website Blocker Installation ==="
+echo "=== HyprBlocker Installation ==="
 echo ""
 
 # Create directories
@@ -126,25 +124,13 @@ echo "Installing native messaging host..."
 cp "$SCRIPT_DIR/extension/native-host/host.py" "$DATA_DIR/native-host/"
 chmod +x "$DATA_DIR/native-host/host.py"
 
-# Install daemon dependencies
-echo "Installing daemon dependencies..."
-cd "$SCRIPT_DIR/daemon"
-uv sync
-DAEMON_PYTHON="$SCRIPT_DIR/daemon/.venv/bin/python"
+# Install all Python dependencies into the single project venv
+echo "Installing Python dependencies..."
 cd "$SCRIPT_DIR"
-
-# Install desktop-app dependencies
-echo "Installing desktop-app dependencies..."
-cd "$SCRIPT_DIR/desktop-app"
 uv sync
-DESKTOP_PYTHON="$SCRIPT_DIR/desktop-app/.venv/bin/python"
-cd "$SCRIPT_DIR"
-
-# Install tray dependencies
-echo "Installing tray dependencies..."
-cd "$SCRIPT_DIR/tray"
-uv sync
-cd "$SCRIPT_DIR"
+PROJECT_PYTHON="$SCRIPT_DIR/.venv/bin/python"
+DAEMON_PYTHON="$PROJECT_PYTHON"
+DESKTOP_PYTHON="$PROJECT_PYTHON"
 
 # Update native messaging manifests with correct paths
 NATIVE_HOST_PATH="$DATA_DIR/native-host/host.py"
@@ -152,13 +138,13 @@ NATIVE_HOST_PATH="$DATA_DIR/native-host/host.py"
 # Firefox native messaging manifest
 FIREFOX_NATIVE_DIR="$HOME/.mozilla/native-messaging-hosts"
 mkdir -p "$FIREFOX_NATIVE_DIR"
-cat > "$FIREFOX_NATIVE_DIR/com.websiteblocker.host.json" << EOF
+cat > "$FIREFOX_NATIVE_DIR/com.hyprblocker.host.json" << EOF
 {
-  "name": "com.websiteblocker.host",
-  "description": "Website Blocker Native Host",
+  "name": "com.hyprblocker.host",
+  "description": "HyprBlocker Native Host",
   "path": "$NATIVE_HOST_PATH",
   "type": "stdio",
-  "allowed_extensions": ["website-blocker@websiteblocker.local"]
+  "allowed_extensions": ["hyprblocker@hyprblocker.local"]
 }
 EOF
 echo "Firefox native messaging manifest installed"
@@ -169,10 +155,10 @@ for chrome_dir in \
     "$HOME/.config/chromium/NativeMessagingHosts" \
     "$HOME/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts"; do
     mkdir -p "$chrome_dir"
-    cat > "$chrome_dir/com.websiteblocker.host.json" << EOF
+    cat > "$chrome_dir/com.hyprblocker.host.json" << EOF
 {
-  "name": "com.websiteblocker.host",
-  "description": "Website Blocker Native Host",
+  "name": "com.hyprblocker.host",
+  "description": "HyprBlocker Native Host",
   "path": "$NATIVE_HOST_PATH",
   "type": "stdio",
   "allowed_origins": [
@@ -185,12 +171,12 @@ echo "Chrome/Chromium native messaging manifests installed"
 
 # Install systemd service
 echo "Installing systemd service..."
-SERVICE_FILE="$HOME/.config/systemd/user/website-blocker.service"
+SERVICE_FILE="$HOME/.config/systemd/user/hyprblocker.service"
 mkdir -p "$(dirname "$SERVICE_FILE")"
 
 cat > "$SERVICE_FILE" << EOF
 [Unit]
-Description=Website Blocker Daemon
+Description=HyprBlocker Daemon
 After=wayland-session@hyprland.desktop.target
 BindsTo=wayland-session@hyprland.desktop.target
 StartLimitIntervalSec=0
@@ -198,8 +184,10 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 Environment="PYTHONUNBUFFERED=1"
-WorkingDirectory=$CONFIG_DIR
-ExecStart=$DAEMON_PYTHON $SCRIPT_DIR/daemon/main.py
+# %h (home) rather than the config dir: on the first boot after the rename
+# the config dir may not exist yet (the daemon migrates the legacy one).
+WorkingDirectory=%h
+ExecStart=$DAEMON_PYTHON -m daemon.main
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -217,14 +205,37 @@ EOF
 # Reload systemd
 systemctl --user daemon-reload
 
+# Clean up pre-rename (website-blocker) artifacts that are safe to remove.
+# The old systemd unit and executables are left alone while a pre-rename
+# daemon/tray is still running — those processes re-enable the old unit
+# themselves and are replaced at the next reboot.
+echo "Cleaning up pre-rename artifacts..."
+rm -f "$HOME/.local/share/applications/WebsiteBlocker.desktop" \
+      "$HOME/.local/share/applications/icons/WebsiteBlocker.png" \
+      "$HOME/.config/autostart/website-blocker-tray.desktop"
+if ! systemctl --user is-active --quiet website-blocker 2>/dev/null; then
+    # Old-name native messaging manifests (superseded by com.hyprblocker.host;
+    # still needed while a pre-rename background.js may be loaded in a browser)
+    rm -f "$HOME/.mozilla/native-messaging-hosts/com.websiteblocker.host.json" \
+          "$HOME/.config/google-chrome/NativeMessagingHosts/com.websiteblocker.host.json" \
+          "$HOME/.config/chromium/NativeMessagingHosts/com.websiteblocker.host.json" \
+          "$HOME/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts/com.websiteblocker.host.json"
+    systemctl --user disable website-blocker 2>/dev/null || true
+    rm -f "$HOME/.config/systemd/user/website-blocker.service"
+    systemctl --user daemon-reload
+    rm -f "$BIN_DIR/website-blocker" "$BIN_DIR/website-blocker-tray"
+    # Legacy data-dir compatibility symlink (never remove a real directory)
+    [ -L "$HOME/.local/share/website-blocker" ] && rm -f "$HOME/.local/share/website-blocker"
+fi
+
 echo ""
 echo "=== Installation Complete ==="
 echo ""
 echo "Next steps:"
 echo ""
 echo "1. Start the daemon:"
-echo "   systemctl --user enable website-blocker"
-echo "   systemctl --user start website-blocker"
+echo "   systemctl --user enable hyprblocker"
+echo "   systemctl --user start hyprblocker"
 echo ""
 echo "2. Install the browser extension:"
 echo "   Firefox:"
@@ -245,9 +256,9 @@ echo "   ./install.sh --build"
 echo ""
 echo "4. Launch the desktop app:"
 echo "   $DESKTOP_PYTHON $SCRIPT_DIR/desktop-app/main.py"
-echo "   Or if built: ~/.local/bin/website-blocker"
+echo "   Or if built: ~/.local/bin/hyprblocker"
 echo ""
 echo "5. Check daemon status:"
-echo "   systemctl --user status website-blocker"
-echo "   journalctl --user -u website-blocker -f"
+echo "   systemctl --user status hyprblocker"
+echo "   journalctl --user -u hyprblocker -f"
 echo ""

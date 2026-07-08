@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Native messaging host for Website Blocker browser extension.
+Native messaging host for HyprBlocker browser extension.
 This script provides the browser process ID to the extension.
 """
 

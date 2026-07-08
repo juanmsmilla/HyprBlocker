@@ -17,7 +17,7 @@ function DaemonDownBanner() {
         <p className="text-sm text-text-secondary">
           Start it with{' '}
           <code className="bg-bg-secondary px-1.5 py-0.5 rounded text-accent-green">
-            systemctl --user start website-blocker
+            systemctl --user start hyprblocker
           </code>{' '}
           and it will reconnect automatically.
         </p>

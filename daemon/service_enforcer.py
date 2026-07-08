@@ -1,6 +1,6 @@
 """Ensures the systemd unit stays enabled (auto-start symlink present).
 
-`systemctl --user disable website-blocker` only removes the .wants symlink —
+`systemctl --user disable hyprblocker` only removes the .wants symlink —
 it doesn't signal the running daemon, so the SIGTERM-refusal in handle_signal()
 never fires. This module detects the missing symlink and re-creates it.
 
@@ -15,7 +15,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SERVICE_NAME = "website-blocker.service"
+SERVICE_NAME = "hyprblocker.service"
 # Must match WantedBy= written by install.sh (see install.sh, [Install] section)
 WANTED_BY_TARGET = "wayland-session@hyprland.desktop.target"
 
@@ -47,7 +47,7 @@ def ensure_service_enabled() -> bool:
             timeout=30,
         )
         if result.returncode == 0:
-            logger.info("Re-enabled website-blocker service (disable-prevention active)")
+            logger.info("Re-enabled hyprblocker service (disable-prevention active)")
             return True
         logger.error(
             f"Failed to re-enable service: {result.stderr.decode().strip()}"

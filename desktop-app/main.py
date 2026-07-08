@@ -468,7 +468,7 @@ def get_web_dir() -> str:
         return web_dir
 
     # Check installed location
-    installed_dir = os.path.expanduser('~/.local/share/website-blocker/desktop-app/web')
+    installed_dir = os.path.expanduser('~/.local/share/hyprblocker/desktop-app/web')
     if os.path.exists(installed_dir):
         return installed_dir
 
@@ -479,7 +479,9 @@ def is_tray_running() -> bool:
     """Check if the tray application is already running."""
     try:
         result = subprocess.run(
-            ['pgrep', '-f', 'website-blocker-tray'],
+            # Matches both hyprblocker-tray and the pre-rename
+            # website-blocker-tray (may still run until next login)
+            ['pgrep', '-f', 'blocker-tray'],
             capture_output=True,
             text=True
         )
@@ -497,7 +499,7 @@ def start_tray_if_not_running():
         return
 
     # Try installed location first
-    tray_path = os.path.expanduser('~/.local/bin/website-blocker-tray')
+    tray_path = os.path.expanduser('~/.local/bin/hyprblocker-tray')
     if os.path.exists(tray_path):
         subprocess.Popen(
             [tray_path],
@@ -507,9 +509,9 @@ def start_tray_if_not_running():
         )
         return
 
-    # Try development location
+    # Try development location (single project venv at the repo root)
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    dev_python = os.path.join(script_dir, '..', 'tray', '.venv', 'bin', 'python')
+    dev_python = os.path.join(script_dir, '..', '.venv', 'bin', 'python')
     dev_tray = os.path.join(script_dir, '..', 'tray', 'main.py')
     if os.path.exists(dev_python) and os.path.exists(dev_tray):
         subprocess.Popen(
@@ -522,7 +524,7 @@ def start_tray_if_not_running():
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description='Website Blocker Desktop App')
+    parser = argparse.ArgumentParser(description='HyprBlocker Desktop App')
     parser.add_argument('--dev', action='store_true', help='Run in development mode (connects to Vite dev server)')
     args = parser.parse_args()
 
@@ -555,7 +557,7 @@ def main():
 
     # Create the window
     webview.create_window(
-        title='Website Blocker',
+        title='HyprBlocker',
         url=url,
         js_api=api,
         width=1000,

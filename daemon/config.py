@@ -76,7 +76,7 @@ class Config:
 
 def get_config_path() -> str:
     """Get the path to the configuration file."""
-    config_dir = os.path.expanduser("~/.config/website-blocker")
+    config_dir = os.path.expanduser("~/.config/hyprblocker")
     os.makedirs(config_dir, exist_ok=True)
     return os.path.join(config_dir, "config.json")
 

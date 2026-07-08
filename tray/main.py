@@ -86,7 +86,7 @@ class TrayApp:
 
         # Installed path
         paths.append(os.path.expanduser(
-            f'~/.local/share/website-blocker/icons/{name}'
+            f'~/.local/share/hyprblocker/icons/{name}'
         ))
 
         return paths
@@ -133,11 +133,11 @@ class TrayApp:
         paths = []
 
         # Installed location
-        paths.append(os.path.expanduser('~/.local/bin/website-blocker'))
+        paths.append(os.path.expanduser('~/.local/bin/hyprblocker'))
 
-        # Development location
+        # Development location (single project venv at the repo root)
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        dev_python = os.path.join(script_dir, '..', 'desktop-app', '.venv', 'bin', 'python')
+        dev_python = os.path.join(script_dir, '..', '.venv', 'bin', 'python')
         dev_main = os.path.join(script_dir, '..', 'desktop-app', 'main.py')
         if os.path.exists(dev_python) and os.path.exists(dev_main):
             paths.append((dev_python, dev_main))
@@ -184,7 +184,7 @@ class TrayApp:
                 enabled=False
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem('Open Website Blocker', lambda: self._open_desktop_app()),
+            pystray.MenuItem('Open HyprBlocker', lambda: self._open_desktop_app()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('Quit', lambda: self._quit())
         )
@@ -197,9 +197,9 @@ class TrayApp:
 
         # Create and run tray icon
         self.icon = pystray.Icon(
-            name="website-blocker",
+            name="hyprblocker",
             icon=self.tray_icon,
-            title="Website Blocker",
+            title="HyprBlocker",
             menu=self._create_menu()
         )
 

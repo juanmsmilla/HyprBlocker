@@ -44,7 +44,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='website-blocker-tray',
+    name='hyprblocker-tray',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

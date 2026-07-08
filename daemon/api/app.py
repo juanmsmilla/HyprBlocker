@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
-        title="Website Blocker Daemon",
+        title="HyprBlocker Daemon",
         description="REST API for the website blocker daemon",
         version="1.0.0"
     )

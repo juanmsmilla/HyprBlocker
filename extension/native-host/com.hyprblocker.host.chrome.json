@@ -1,0 +1,9 @@
+{
+  "name": "com.hyprblocker.host",
+  "description": "HyprBlocker Native Host - Provides browser PID to extension",
+  "path": "/home/USER/.local/share/hyprblocker/native-host/host.py",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://EXTENSION_ID/"
+  ]
+}

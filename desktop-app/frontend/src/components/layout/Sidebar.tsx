@@ -27,7 +27,7 @@ export function Sidebar() {
     <nav className="w-60 bg-bg-sidebar text-text-bright flex flex-col fixed h-screen left-0 top-0">
       {/* Header */}
       <div className="p-6 border-b border-white/10">
-        <h1 className="text-lg font-semibold">Website Blocker</h1>
+        <h1 className="text-lg font-semibold">HyprBlocker</h1>
       </div>
 
       {/* Navigation */}

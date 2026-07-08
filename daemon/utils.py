@@ -34,8 +34,8 @@ def get_xdg_config_dir() -> str:
     """
     xdg_config = os.environ.get("XDG_CONFIG_HOME")
     if xdg_config:
-        return os.path.join(xdg_config, "website-blocker")
-    return os.path.expanduser("~/.config/website-blocker")
+        return os.path.join(xdg_config, "hyprblocker")
+    return os.path.expanduser("~/.config/hyprblocker")
 
 
 def get_xdg_data_dir() -> str:
@@ -46,8 +46,8 @@ def get_xdg_data_dir() -> str:
     """
     xdg_data = os.environ.get("XDG_DATA_HOME")
     if xdg_data:
-        return os.path.join(xdg_data, "website-blocker")
-    return os.path.expanduser("~/.local/share/website-blocker")
+        return os.path.join(xdg_data, "hyprblocker")
+    return os.path.expanduser("~/.local/share/hyprblocker")
 
 
 def ensure_directories() -> None:

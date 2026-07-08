@@ -394,7 +394,7 @@ export function Settings() {
           <div className="flex justify-between py-3">
             <span className="text-text-secondary">Config:</span>
             <span className="font-medium text-text">
-              ~/.config/website-blocker/
+              ~/.config/hyprblocker/
             </span>
           </div>
         </Card>

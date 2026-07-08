@@ -96,7 +96,7 @@ export function Browsers() {
             permission
           </p>
           <p className="text-text-secondary text-sm">
-            To fix: Open chrome://extensions/, find "Website Blocker", and enable "Allow in
+            To fix: Open chrome://extensions/, find "HyprBlocker", and enable "Allow in
             Incognito"
           </p>
         </div>
@@ -158,7 +158,7 @@ export function Browsers() {
             <li>
               Load the extension from:{' '}
               <code className="bg-bg-secondary px-2 py-1 rounded text-accent-green text-sm">
-                ~/.local/share/website-blocker/extension
+                ~/.local/share/hyprblocker/extension
               </code>
             </li>
             <li>Enable the extension in incognito/private mode</li>
