@@ -1,6 +1,7 @@
 # HyprBlocker
 
 [![CI](https://github.com/TTeuber/HyprBlocker/actions/workflows/ci.yml/badge.svg)](https://github.com/TTeuber/HyprBlocker/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/TTeuber/HyprBlocker/branch/main/graph/badge.svg)](https://codecov.io/gh/TTeuber/HyprBlocker)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
@@ -102,11 +103,11 @@ This builds the desktop and tray app executables into `~/.local/bin/`, copies th
 ### 3. Start the daemon
 
 ```bash
-systemctl --user enable --now website-blocker
+systemctl --user enable --now hyprblocker
 
 # Check status / logs
-systemctl --user status website-blocker
-journalctl --user -u website-blocker -f
+systemctl --user status hyprblocker
+journalctl --user -u hyprblocker -f
 ```
 
 ### 4. Install the browser extension
@@ -114,13 +115,13 @@ journalctl --user -u website-blocker -f
 **Chrome/Chromium:**
 
 1. Go to `chrome://extensions/`, enable "Developer mode"
-2. "Load unpacked" → select `~/.local/share/website-blocker/extension/`
+2. "Load unpacked" → select `~/.local/share/hyprblocker/extension/`
 3. In the extension's details, enable **"Allow in incognito"** (required — enforcement checks for it)
 
 ### 5. Launch the desktop app
 
 ```bash
-website-blocker          # installed executable
+hyprblocker          # installed executable
 # or from source:
 uv run python desktop-app/main.py
 ```
@@ -166,11 +167,13 @@ The "Browsers" page shows which running browsers have a live extension heartbeat
 
 | File | Purpose |
 | --- | --- |
-| `~/.config/website-blocker/config.json` | Daemon settings |
-| `~/.config/website-blocker/blocker.db` | SQLite database (blocks, events, heartbeats) |
-| `~/.config/website-blocker/watchdog_state.json` | Watchdog process state |
-| `~/.config/website-blocker/daemon.log` | Daemon log |
-| `~/.config/systemd/user/website-blocker.service` | Systemd unit |
+| `~/.config/hyprblocker/config.json` | Daemon settings |
+| `~/.config/hyprblocker/blocker.db` | SQLite database (blocks, events, heartbeats) |
+| `~/.config/hyprblocker/watchdog_state.json` | Watchdog process state |
+| `~/.config/hyprblocker/daemon.log` | Daemon log |
+| `~/.config/systemd/user/hyprblocker.service` | Systemd unit |
+
+> **A note on naming:** the project was originally called `website-blocker` and has been renamed to **HyprBlocker** throughout — executables, systemd unit, and config paths. Because the daemon actively resists being stopped (shutdown prevention, watchdogs, NTP-verified locks), the rename can't happen in place on a live install: the daemon migrates a legacy `~/.config/website-blocker` directory to `~/.config/hyprblocker` automatically on its first start after the old daemon is gone (i.e. after a reboot), and a temporary `website-blocker.service` shim forwards restart requests from still-running pre-rename watchdogs to the new unit. The native-messaging host (`com.hyprblocker.host`) and Firefox extension ID (`hyprblocker@hyprblocker.local`) were renamed as well — browser-side manifests for both names coexist during the transition, and extensions just need a one-time reload.
 
 ## API
 
@@ -192,7 +195,7 @@ The daemon exposes a REST API on `http://127.0.0.1:8765`. Highlights:
 ### Running from source
 
 ```bash
-uv run python daemon/main.py        # daemon in foreground
+uv run python -m daemon.main        # daemon in foreground
 uv run python desktop-app/main.py   # desktop app
 uv run python tray/main.py          # tray app
 
@@ -202,8 +205,9 @@ cd desktop-app/frontend && bun dev  # frontend with hot reload
 ### Tests & linting
 
 ```bash
-uv run pytest            # unit tests (pattern matching, scheduling)
-uv run ruff check .      # Python lint
+uv run pytest --cov=daemon   # unit + API tests with coverage
+uv run ruff check .          # Python lint
+bun test extension           # extension pattern-matching tests (daemon parity)
 cd desktop-app/frontend && bun run lint && bun run build
 ```
 
@@ -215,7 +219,7 @@ CI runs all of the above on every push (see `.github/workflows/ci.yml`).
 curl http://127.0.0.1:8765/api/status | python3 -m json.tool   # daemon alive?
 curl http://127.0.0.1:8765/api/browsers                        # extension heartbeats
 hyprctl clients -j | jq '.[] | {class, pid, title}'            # what Hyprland sees
-journalctl --user -u website-blocker -n 50 --no-pager          # recent daemon logs
+journalctl --user -u hyprblocker -n 50 --no-pager          # recent daemon logs
 ```
 
 ## Limitations
@@ -223,7 +227,7 @@ journalctl --user -u website-blocker -n 50 --no-pager          # recent daemon l
 **This is designed for self-control, not parental controls.** A determined user with system access can always win:
 
 - `pkill -9 python` kills the daemon, watchdogs, and desktop app together
-- `systemctl --user disable website-blocker` prevents auto-start after reboot
+- `systemctl --user disable hyprblocker` prevents auto-start after reboot
 - Booting into recovery mode sidesteps everything
 - Editing the database directly (when no lock is active)
 

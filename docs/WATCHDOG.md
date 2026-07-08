@@ -25,13 +25,13 @@ The watchdog system is HyprBlocker's answer to the most obvious bypass: killing 
 
 - On startup (when enabled), the daemon spawns **N watchdog processes** (configurable 2–5, default 3) via `watchdog_runner.py`.
 - Each watchdog:
-  - Polls the daemon's HTTP API every **5 seconds**. If the daemon is unreachable, the watchdog restarts it with `systemctl --user restart website-blocker`.
+  - Polls the daemon's HTTP API every **5 seconds**. If the daemon is unreachable, the watchdog restarts it with `systemctl --user restart hyprblocker`.
   - Checks its **sibling watchdogs' PIDs every 10 seconds**. If a sibling has died, it respawns a replacement.
 - Watchdogs run with **obfuscated process names** (e.g. `kworker-7`) so they blend in with normal system processes, raising the effort needed to find and kill all of them at once.
 
 ## Shared State
 
-Watchdogs coordinate through a state file at `~/.config/website-blocker/watchdog_state.json`:
+Watchdogs coordinate through a state file at `~/.config/hyprblocker/watchdog_state.json`:
 
 ```json
 {
@@ -70,7 +70,7 @@ Watchdogs require **shutdown prevention** to be enabled:
 Documented deliberately — see the Limitations section in the [README](../README.md):
 
 - `pkill -9 python` kills daemon and watchdogs together (they're all Python processes).
-- `systemctl --user disable website-blocker` prevents restart after the next reboot.
+- `systemctl --user disable hyprblocker` prevents restart after the next reboot.
 - Booting into a recovery environment sidesteps everything.
 
 These are acceptable within the threat model: each requires a deliberate, multi-step action rather than a single impulsive click.

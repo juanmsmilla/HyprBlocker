@@ -1,4 +1,4 @@
-# Website Blocker - Technical Reference for Claude
+# HyprBlocker - Technical Reference for Claude
 
 ## Architecture Overview
 
@@ -21,7 +21,10 @@ Tray App + Desktop App + Browser Extension
 
 ### Daemon (daemon/)
 
+A proper Python package (`daemon/__init__.py`); all intra-daemon imports use `from daemon.x import y`. Run with `python -m daemon.main` (the systemd unit does this from the root `.venv`). Watchdogs are spawned as `python -m daemon.watchdog_runner`; `watchdog_runner.py` keeps a small bootstrap shim so pre-package watchdog processes that respawn siblings by file path still work.
+
 - `main.py` - Entry point, systemd integration, signal handling, watchdog spawning
+- `legacy_migration.py` - One-time `~/.config/website-blocker` → `~/.config/hyprblocker` move at startup (post-rename)
 - `api/` - REST API package
   - `__init__.py` - App creation and router wiring
   - `app.py` - FastAPI app setup with CORS
@@ -54,7 +57,6 @@ Tray App + Desktop App + Browser Extension
 ### Tray App (tray/)
 
 - `main.py` - System tray app using pystray (appindicator backend)
-- `pyproject.toml` - Dependencies (pystray, pillow, pygobject, requests)
 - `tray-app.spec` - PyInstaller spec for building executable
 
 ### Icons (icons/)
@@ -65,17 +67,24 @@ Tray App + Desktop App + Browser Extension
 ### Browser Extension (extension/)
 
 - `background.js` - Service worker (heartbeat, blocking)
+- `matcher.js` - URL pattern matching (loaded via `importScripts`; unit-tested with bun, keep in sync with `daemon/blocker.py`)
+- `matcher.test.js` - bun test suite for the matcher
 - `blocked.html` - Blocked page display
 - `popup/` - Extension popup UI
 - `native-host/host.py` - Native messaging for PID detection
 
 ### Tests (tests/)
 
-- `conftest.py` - Adds `daemon/` to sys.path for imports
 - `test_blocker.py` - URL/app pattern matching and rule parsing
 - `test_scheduler.py` - Schedule logic (day/time parsing, active-block evaluation)
 - `test_stats_api.py` - `/api/stats/details` endpoint (timeline, top targets, recent events)
-- Run with `uv run pytest` (pytest is in the root dev dependency group)
+- `test_blocks_api.py` - Block CRUD via FastAPI TestClient + in-memory SQLite; lock-mode 403s, `/strict` and `/extend-lock` tighten-only semantics
+- `test_lock_manager.py` - Per-block lock logic and expired-lock cleanup
+- `test_time_verifier.py` - NTP verification with a fake NTP client (fail-closed at lock transitions)
+- `test_legacy_migration.py` - Config-dir rename migration (move/merge/defer-while-old-daemon-runs)
+- No conftest hack: `pythonpath = ["."]` in root pyproject makes `import daemon` work
+- Run with `uv run pytest` (pytest/pytest-cov/httpx are in the root dev dependency group)
+- Extension matcher tests: `bun test extension` (`extension/matcher.test.js`, mirrors `test_blocker.py` to guard daemon/extension parity)
 
 ### Docs (docs/)
 
@@ -86,14 +95,15 @@ Tray App + Desktop App + Browser Extension
 
 ### CI & Tooling
 
-- `.github/workflows/ci.yml` - GitHub Actions: ruff lint, pytest, frontend lint + build
+- `.github/workflows/ci.yml` - GitHub Actions: ruff lint, pytest with coverage (Codecov upload), bun extension tests, frontend lint + build
 - Ruff config lives in the root `pyproject.toml` (`uv run ruff check .`)
+- **Single root `pyproject.toml`** for all Python components (daemon/desktop/tray deps + dev group); hatchling builds the `daemon` package so `python -m daemon.main` works from the root `.venv`. There are no per-component pyproject/lock files.
 - `LICENSE` - MIT
-- Public branding is **HyprBlocker** (GitHub repo name, README); internal names, executables, and config paths still use `website-blocker`
+- Everything is named **hyprblocker**: executables, systemd unit `hyprblocker.service`, config dir `~/.config/hyprblocker`, native-messaging host `com.hyprblocker.host`, Firefox extension ID `hyprblocker@hyprblocker.local`. `daemon/legacy_migration.py` moves a pre-rename `~/.config/website-blocker` dir into place on daemon startup (deferring, and exiting, while a pre-rename daemon still holds the port); a `website-blocker.service` shim unit forwards restarts from pre-rename watchdogs. The shim, the old `com.websiteblocker.host.json` browser manifests, and old bins are removed by running `./install.sh` after the first post-rename reboot.
 
 ## Database Schema
 
-Location: `~/.config/website-blocker/blocker.db`
+Location: `~/.config/hyprblocker/blocker.db`
 
 ### blocks table
 
@@ -254,13 +264,13 @@ The watchdog system provides daemon resilience by spawning independent processes
 3. Each watchdog monitors:
    - Daemon health (HTTP check every 5 seconds)
    - Sibling watchdog processes (PID check every 10 seconds)
-4. If daemon dies → watchdog restarts via `systemctl --user restart website-blocker`
+4. If daemon dies → watchdog restarts via `systemctl --user restart hyprblocker`
 5. If sibling dies → remaining watchdogs respawn it
 6. Watchdogs use obfuscated process names for resilience
 
 ### State File
 
-Location: `~/.config/website-blocker/watchdog_state.json`
+Location: `~/.config/hyprblocker/watchdog_state.json`
 
 ```json
 {
@@ -296,7 +306,7 @@ Location: `~/.config/website-blocker/watchdog_state.json`
 
 - **Purpose**: Get real browser PID (not extension process PID)
 - **Protocol**: Stdin/stdout JSON messages
-- **Host location**: `~/.config/chromium/NativeMessagingHosts/com.websiteblocker.host.json`
+- **Host location**: `~/.config/chromium/NativeMessagingHosts/com.hyprblocker.host.json`
 - **Host script**: `extension/native-host/host.py`
 - **Permissions**: nativeMessaging in manifest.json
 
@@ -331,26 +341,26 @@ The native messaging manifest must use this exact ID:
 
 ## Configuration Files
 
-- Config: `~/.config/website-blocker/config.json`
-- Database: `~/.config/website-blocker/blocker.db`
-- Watchdog state: `~/.config/website-blocker/watchdog_state.json`
-- Daemon log: `~/.config/website-blocker/daemon.log`
-- Watchdog log: `~/.config/website-blocker/watchdog.log`
-- Systemd: `~/.config/systemd/user/website-blocker.service`
-- Native messaging: `~/.config/chromium/NativeMessagingHosts/com.websiteblocker.host.json`
-- Tray autostart: `~/.config/autostart/website-blocker-tray.desktop`
+- Config: `~/.config/hyprblocker/config.json`
+- Database: `~/.config/hyprblocker/blocker.db`
+- Watchdog state: `~/.config/hyprblocker/watchdog_state.json`
+- Daemon log: `~/.config/hyprblocker/daemon.log`
+- Watchdog log: `~/.config/hyprblocker/watchdog.log`
+- Systemd: `~/.config/systemd/user/hyprblocker.service`
+- Native messaging: `~/.config/chromium/NativeMessagingHosts/com.hyprblocker.host.json`
+- Tray autostart: `~/.config/autostart/hyprblocker-tray.desktop`
 
 ## Installation & Executables
 
-- Executables: `~/.local/bin/website-blocker`, `~/.local/bin/website-blocker-tray`
-- Icons: `~/.local/share/website-blocker/icons/`
+- Executables: `~/.local/bin/hyprblocker`, `~/.local/bin/hyprblocker-tray`
+- Icons: `~/.local/share/hyprblocker/icons/`
 - Build with: `./install.sh --build`
 - Tray app starts automatically on login via autostart entry
 - Desktop app starts tray app if not running (production mode only)
 
 ### Systemd Service Dependencies (IMPORTANT)
 
-The daemon service (`~/.config/systemd/user/website-blocker.service`) has specific dependencies:
+The daemon service (`~/.config/systemd/user/hyprblocker.service`) has specific dependencies:
 
 ```ini
 [Unit]

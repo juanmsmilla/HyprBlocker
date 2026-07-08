@@ -12,7 +12,7 @@ This document explains the technical concepts behind two critical fixes made to 
 
 ### The Problem
 
-After a system reboot, the daemon started but didn't enforce browser blocking until after running `systemctl --user restart website-blocker.service`.
+After a system reboot, the daemon started but didn't enforce browser blocking until after running `systemctl --user restart hyprblocker.service`.
 
 ### Root Cause: Systemd Targets and Dependencies
 
@@ -125,12 +125,12 @@ WantedBy=wayland-session@hyprland.desktop.target
 
 Check where your service is linked:
 ```bash
-ls -l ~/.config/systemd/user/*.target.wants/website-blocker.service
+ls -l ~/.config/systemd/user/*.target.wants/hyprblocker.service
 ```
 
 After the fix, you should see:
 ```
-wayland-session@hyprland.desktop.target.wants/website-blocker.service
+wayland-session@hyprland.desktop.target.wants/hyprblocker.service
 ```
 
 ---
@@ -180,11 +180,11 @@ Browser extensions run in a sandboxed environment. When you call `process.pid` i
 Native messaging requires two components:
 
 **1. Manifest File** (JSON)
-Located at: `~/.config/chromium/NativeMessagingHosts/com.websiteblocker.host.json`
+Located at: `~/.config/chromium/NativeMessagingHosts/com.hyprblocker.host.json`
 
 ```json
 {
-  "name": "com.websiteblocker.host",
+  "name": "com.hyprblocker.host",
   "description": "Website Blocker Native Host",
   "path": "/path/to/host.py",
   "type": "stdio",
