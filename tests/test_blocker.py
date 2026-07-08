@@ -1,7 +1,8 @@
 """Tests for core blocking logic: URL/app pattern matching and rule parsing."""
 
 import pytest
-from blocker import AppBlocker, SiteBlocker, parse_rules_from_text
+
+from daemon.blocker import AppBlocker, SiteBlocker, parse_rules_from_text
 
 
 class TestParseRulesFromText:

@@ -1,16 +1,12 @@
 """Lock mode management for the website blocker daemon."""
 
 import logging
-import os
-import sys
 from datetime import datetime
 
-# Add daemon directory to Python path for absolute imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from database import Block
 from sqlalchemy import select
-from time_verifier import get_time_verifier
+
+from daemon.database import Block
+from daemon.time_verifier import get_time_verifier
 
 logger = logging.getLogger(__name__)
 

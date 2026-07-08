@@ -1,7 +1,8 @@
 """Shared dependencies for the website blocker API."""
 
 from fastapi import HTTPException
-from lock_manager import get_lock_manager
+
+from daemon.lock_manager import get_lock_manager
 
 # Session factory - will be set during startup
 _session_factory = None

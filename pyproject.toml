@@ -1,32 +1,49 @@
 [project]
-name = "website-blocker"
+name = "hyprblocker"
 version = "0.1.0"
 description = "A self-control website & app blocker for Linux/Hyprland with a tamper-resistant daemon, browser extension, and lockable schedules"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    # Daemon
     "aiosqlite>=0.22.0",
     "apscheduler>=3.11.2",
     "fastapi>=0.127.0",
     "ntplib>=0.4.0",
-    "pillow>=12.1.0",
-    "pygobject>=3.50.0",
-    "pyinstaller>=6.17.0",
-    "pystray>=0.19.5",
-    "pywebview[gtk]>=6.1",
-    "requests>=2.32.5",
     "sqlalchemy>=2.0.45",
     "uvicorn>=0.40.0",
+    # Desktop app
+    "pywebview[gtk]>=6.1",
+    "requests>=2.32.5",
+    # Tray app
+    "pillow>=12.1.0",
+    "pygobject>=3.50.0",
+    "pystray>=0.19.5",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28",
+    "pyinstaller>=6.17.0",
     "pytest>=8.0",
+    "pytest-cov>=6.0",
     "ruff>=0.8",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# Only the daemon is an importable package; the desktop and tray apps are
+# standalone scripts bundled by PyInstaller.
+packages = ["daemon"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Make `import daemon` work without installing the project (used by CI,
+# which skips the GTK-dependent project install).
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
@@ -43,7 +60,10 @@ select = [
     "UP",  # pyupgrade
 ]
 ignore = [
-    "E402",  # module import not at top of file (daemon uses sys.path setup before imports)
     "E501",  # line length handled by formatter where it matters
     "B008",  # function call in default argument (idiomatic FastAPI Depends())
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# PYSTRAY_BACKEND must be set before pystray is imported
+"tray/main.py" = ["E402"]

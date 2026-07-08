@@ -2,11 +2,12 @@
 
 from datetime import datetime, timedelta
 
-from database import Block, BlockEvent
 from fastapi import APIRouter, Depends
-from heartbeat_tracker import get_heartbeat_tracker
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from daemon.database import Block, BlockEvent
+from daemon.heartbeat_tracker import get_heartbeat_tracker
 
 from ..deps import get_session
 from ..schemas import (
@@ -183,9 +184,8 @@ async def get_blocked_sites():
     of sites to block. Returns per-block data so extension can implement
     intersection-based allow list logic.
     """
-    from scheduler import get_scheduler
-
-    from config import get_config
+    from daemon.config import get_config
+    from daemon.scheduler import get_scheduler
 
     scheduler = get_scheduler()
     config = get_config()

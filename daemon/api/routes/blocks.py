@@ -2,12 +2,13 @@
 
 from datetime import UTC, datetime
 
-from database import Block
 from fastapi import APIRouter, Depends, HTTPException
-from lock_manager import get_lock_manager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from time_verifier import get_time_verifier
+
+from daemon.database import Block
+from daemon.lock_manager import get_lock_manager
+from daemon.time_verifier import get_time_verifier
 
 from ..deps import check_block_lock, get_session
 from ..schemas import (

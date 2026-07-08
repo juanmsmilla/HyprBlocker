@@ -1,17 +1,12 @@
 """NTP time verification to prevent time manipulation bypasses."""
 
 import logging
-import os
 import socket
-import sys
 from datetime import UTC, datetime
 
 import ntplib
 
-# Add daemon directory to Python path for absolute imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from config import get_config
+from daemon.config import get_config
 
 logger = logging.getLogger(__name__)
 

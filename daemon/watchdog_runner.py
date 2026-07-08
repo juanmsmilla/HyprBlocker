@@ -10,13 +10,17 @@ import logging
 import os
 import sys
 
-# Add daemon directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+if __package__ in (None, ""):
+    # Executed by file path (pre-package watchdogs still running in memory
+    # respawn siblings this way). Make the repo root importable so the
+    # `daemon.*` imports below resolve; `python -m daemon.watchdog_runner`
+    # skips this branch entirely.
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from watchdog import Watchdog
+from daemon.watchdog import Watchdog
 
 # Set up logging to file
-log_dir = os.path.expanduser("~/.config/website-blocker")
+log_dir = os.path.expanduser("~/.config/hyprblocker")
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, "watchdog.log")
 

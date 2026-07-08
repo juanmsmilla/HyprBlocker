@@ -1,7 +1,8 @@
 """Heartbeat and grace period API routes."""
 
 from fastapi import APIRouter
-from heartbeat_tracker import get_heartbeat_tracker
+
+from daemon.heartbeat_tracker import get_heartbeat_tracker
 
 from ..schemas import GracePeriodResponse, HeartbeatRequest, HeartbeatResponse
 

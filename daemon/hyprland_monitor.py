@@ -3,17 +3,11 @@
 import asyncio
 import json
 import logging
-import os
-import sys
 
-# Add daemon directory to Python path for absolute imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from blocker import get_app_blocker
-from database import BlockEvent
-from heartbeat_tracker import get_heartbeat_tracker
-
-from config import get_config
+from daemon.blocker import get_app_blocker
+from daemon.config import get_config
+from daemon.database import BlockEvent
+from daemon.heartbeat_tracker import get_heartbeat_tracker
 
 logger = logging.getLogger(__name__)
 

@@ -3,9 +3,10 @@
 import asyncio
 from datetime import datetime, timedelta
 
-from api.routes.status import get_stats_details
-from database import Base, BlockEvent
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from daemon.api.routes.status import get_stats_details
+from daemon.database import Base, BlockEvent
 
 
 def run_with_events(events):

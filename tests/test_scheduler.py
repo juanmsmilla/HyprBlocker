@@ -5,7 +5,8 @@ from datetime import time as dt_time
 from types import SimpleNamespace
 
 import pytest
-from scheduler import BlockChecker
+
+from daemon.scheduler import BlockChecker
 
 
 @pytest.fixture

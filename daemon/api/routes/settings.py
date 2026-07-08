@@ -4,11 +4,11 @@ import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
-from service_enforcer import ensure_service_enabled
-from time_verifier import get_time_verifier
-from watchdog import WatchdogManager, is_settings_locked_ntp
 
-from config import get_config, reload_config, save_config
+from daemon.config import get_config, reload_config, save_config
+from daemon.service_enforcer import ensure_service_enabled
+from daemon.time_verifier import get_time_verifier
+from daemon.watchdog import WatchdogManager, is_settings_locked_ntp
 
 from ..schemas import (
     BrowserEnforcementStatusResponse,

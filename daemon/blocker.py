@@ -2,13 +2,8 @@
 
 import fnmatch
 import logging
-import os
-import sys
 
-# Add daemon directory to Python path for absolute imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from scheduler import get_scheduler
+from daemon.scheduler import get_scheduler
 
 logger = logging.getLogger(__name__)
 

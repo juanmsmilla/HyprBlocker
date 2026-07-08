@@ -1,15 +1,10 @@
 """Heartbeat tracking for browser extensions."""
 
 import logging
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-# Add daemon directory to Python path for absolute imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from config import get_config
+from daemon.config import get_config
 
 logger = logging.getLogger(__name__)
 

@@ -121,7 +121,7 @@ class HeartbeatLog(Base):
 
 def get_database_path() -> str:
     """Get the path to the SQLite database file."""
-    config_dir = os.path.expanduser("~/.config/website-blocker")
+    config_dir = os.path.expanduser("~/.config/hyprblocker")
     os.makedirs(config_dir, exist_ok=True)
     return os.path.join(config_dir, "blocker.db")
 
@@ -133,7 +133,7 @@ def get_database_url() -> str:
 
 async def init_database():
     """Initialize the database and create all tables."""
-    from migrations import migrate_rules_to_text_fields, migrate_schedules_to_blocks
+    from daemon.migrations import migrate_rules_to_text_fields, migrate_schedules_to_blocks
 
     engine = create_async_engine(get_database_url(), echo=False)
 

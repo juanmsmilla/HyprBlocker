@@ -2,17 +2,12 @@
 
 import json
 import logging
-import os
-import sys
 from datetime import datetime
 from datetime import time as dt_time
 
 from sqlalchemy import select
 
-# Add daemon directory to Python path for absolute imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from database import Block
+from daemon.database import Block
 
 logger = logging.getLogger(__name__)
 
