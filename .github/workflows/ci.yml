@@ -17,7 +17,7 @@ jobs:
         run: uvx ruff check daemon desktop-app/main.py desktop-app/api_client.py tray tests
 
   test:
-    name: Tests (pytest)
+    name: Tests (pytest + coverage)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,8 +26,28 @@ jobs:
         run: uv python install
       # The full project depends on GTK system libraries (pygobject, pywebview[gtk])
       # that aren't needed for the unit tests, so run without syncing the project.
-      - name: Run tests
-        run: uv run --no-project --with pytest --with sqlalchemy --with aiosqlite pytest -q
+      # `pythonpath = ["."]` in pyproject.toml makes `import daemon` work anyway.
+      - name: Run tests with coverage
+        run: >
+          uv run --no-project
+          --with pytest --with pytest-cov
+          --with sqlalchemy --with aiosqlite
+          --with fastapi --with httpx --with ntplib
+          pytest -q --cov=daemon --cov-report=xml --cov-report=term
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+
+  extension:
+    name: Extension tests (bun)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Run matcher tests
+        run: bun test extension
 
   frontend:
     name: Frontend (typecheck + build)

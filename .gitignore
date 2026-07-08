@@ -9,6 +9,10 @@ wheels/
 # Virtual environments
 .venv
 
+# Test artifacts
+coverage.xml
+.coverage
+
 # Dev Files
 documentation/
 features.md
