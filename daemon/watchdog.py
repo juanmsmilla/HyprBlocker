@@ -34,7 +34,7 @@ COMMON_NAMES = [
 ]
 
 # Paths
-CONFIG_DIR = Path.home() / ".config" / "website-blocker"
+CONFIG_DIR = Path.home() / ".config" / "hyprblocker"
 WATCHDOG_STATE_FILE = CONFIG_DIR / "watchdog_state.json"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
@@ -118,10 +118,19 @@ class WatchdogState:
             return cls()
 
     def save(self) -> None:
-        """Save state to file."""
+        """Save state to file atomically.
+
+        The daemon and every watchdog read and write this file concurrently.
+        Writing in place (open 'w') truncates first, so a concurrent reader
+        can observe an empty file, load defaults, and clobber the real state
+        on its next save. Write-to-temp + rename makes readers always see a
+        complete file.
+        """
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        with open(WATCHDOG_STATE_FILE, 'w') as f:
+        tmp_file = WATCHDOG_STATE_FILE.with_suffix(f".tmp.{os.getpid()}")
+        with open(tmp_file, 'w') as f:
             json.dump(asdict(self), f, indent=2)
+        os.replace(tmp_file, WATCHDOG_STATE_FILE)
 
 
 def read_config_lock_until() -> datetime | None:
@@ -207,7 +216,7 @@ def restart_daemon() -> bool:
     """Restart the daemon via systemctl."""
     try:
         result = subprocess.run(
-            ["systemctl", "--user", "restart", "website-blocker"],
+            ["systemctl", "--user", "restart", "hyprblocker"],
             capture_output=True,
             timeout=30
         )
@@ -243,7 +252,6 @@ class WatchdogManager:
         state.watchdogs = []
 
         pids = []
-        runner_path = Path(__file__).parent / "watchdog_runner.py"
 
         for i in range(self.watchdog_count):
             name = generate_obfuscated_name()
@@ -271,10 +279,11 @@ class WatchdogManager:
                     os.dup2(devnull, 1)
                     os.dup2(devnull, 2)
 
-                    # Execute the watchdog runner
+                    # Execute the watchdog runner as a module so `daemon.*`
+                    # imports resolve without sys.path manipulation
                     os.execv(sys.executable, [
                         sys.executable,
-                        str(runner_path),
+                        "-m", "daemon.watchdog_runner",
                         "--name", name,
                         "--port", str(self.daemon_port)
                     ])
@@ -409,7 +418,7 @@ class Watchdog:
             if now - last_enable_check >= SERVICE_ENABLE_CHECK_INTERVAL:
                 last_enable_check = now
                 if not state.shutdown_requested:
-                    from service_enforcer import ensure_service_enabled
+                    from daemon.service_enforcer import ensure_service_enabled
                     ensure_service_enabled()
 
             time.sleep(1)
@@ -447,8 +456,6 @@ class Watchdog:
         if missing_count > 0:
             logger.info(f"Need to respawn {missing_count} sibling(s)")
 
-            runner_path = Path(__file__).parent / "watchdog_runner.py"
-
             for _ in range(missing_count):
                 name = generate_obfuscated_name()
 
@@ -473,7 +480,7 @@ class Watchdog:
 
                         os.execv(sys.executable, [
                             sys.executable,
-                            str(runner_path),
+                            "-m", "daemon.watchdog_runner",
                             "--name", name,
                             "--port", str(self.daemon_port)
                         ])
