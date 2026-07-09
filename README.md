@@ -1,7 +1,7 @@
 # HyprBlocker
 
 [![CI](https://github.com/TTeuber/HyprBlocker/actions/workflows/ci.yml/badge.svg)](https://github.com/TTeuber/HyprBlocker/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/TTeuber/HyprBlocker/branch/main/graph/badge.svg)](https://codecov.io/gh/TTeuber/HyprBlocker)
+<!-- [![codecov](https://codecov.io/gh/TTeuber/HyprBlocker/branch/main/graph/badge.svg)](https://codecov.io/gh/TTeuber/HyprBlocker) -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
@@ -228,8 +228,6 @@ journalctl --user -u hyprblocker -n 50 --no-pager          # recent daemon logs
 
 **This is designed for self-control, not parental controls.** A determined user with system access can always win:
 
-- `pkill -9 python` kills the daemon, watchdogs, and desktop app together
-- `systemctl --user disable hyprblocker` prevents auto-start after reboot
 - Booting into recovery mode sidesteps everything
 - Editing the database directly (when no lock is active)
 
@@ -241,4 +239,4 @@ The threat model is *impulsive* bypass, not adversarial admin access. The watchd
 
 ---
 
-Built for personal use on Arch Linux + Hyprland — designed specifically for tiling window managers and strict enforcement. The goal is productivity, not suffering.
+Built for personal use on Arch Linux + Hyprland
