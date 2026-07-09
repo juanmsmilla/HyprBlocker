@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useStatus } from "../context/StatusContext";
 import { useToast } from "../context/ToastContext";
 import { Card } from "../components/ui/Card";
@@ -39,16 +39,7 @@ export function Settings() {
   const [extendDurationValue, setExtendDurationValue] = useState(1);
   const [extendDurationUnit, setExtendDurationUnit] = useState<DurationUnit>('hour');
 
-  // Load all settings on mount
-  useEffect(() => {
-    loadBrowserEnforcementStatus();
-    loadSafeSearchStatus();
-    loadShutdownPreventionStatus();
-    loadWatchdogStatus();
-    loadSettingsLock();
-  }, []);
-
-  const loadBrowserEnforcementStatus = async () => {
+  const loadBrowserEnforcementStatus = useCallback(async () => {
     try {
       const status = await api.getBrowserEnforcementStatus();
       setBrowserEnforcementStatus(status);
@@ -56,7 +47,7 @@ export function Settings() {
       console.error("Failed to load browser enforcement status:", error);
       showToast("Failed to load settings", "error");
     }
-  };
+  }, [showToast]);
 
   const handleBrowserEnforcementToggle = async (enabled: boolean) => {
     setUpdating(true);
@@ -90,7 +81,7 @@ export function Settings() {
     }
   };
 
-  const loadSafeSearchStatus = async () => {
+  const loadSafeSearchStatus = useCallback(async () => {
     try {
       const status = await api.getSafeSearchStatus();
       setSafeSearchStatus(status);
@@ -98,7 +89,7 @@ export function Settings() {
       console.error("Failed to load safe search status:", error);
       showToast("Failed to load settings", "error");
     }
-  };
+  }, [showToast]);
 
   const handleSafeSearchToggle = async (enabled: boolean) => {
     setUpdating(true);
@@ -132,14 +123,14 @@ export function Settings() {
     }
   };
 
-  const loadShutdownPreventionStatus = async () => {
+  const loadShutdownPreventionStatus = useCallback(async () => {
     try {
       const status = await api.getShutdownPreventionStatus();
       setShutdownPreventionStatus(status);
     } catch (error) {
       console.error("Failed to load shutdown prevention status:", error);
     }
-  };
+  }, []);
 
   const handleShutdownPreventionToggle = async (enabled: boolean) => {
     setUpdating(true);
@@ -171,23 +162,38 @@ export function Settings() {
     }
   };
 
-  const loadWatchdogStatus = async () => {
+  const loadWatchdogStatus = useCallback(async () => {
     try {
       const status = await api.getWatchdogStatus();
       setWatchdogStatus(status);
     } catch (error) {
       console.error("Failed to load watchdog status:", error);
     }
-  };
+  }, []);
 
-  const loadSettingsLock = async () => {
+  const loadSettingsLock = useCallback(async () => {
     try {
       const lock = await api.getSettingsLock();
       setSettingsLock(lock);
     } catch (error) {
       console.error("Failed to load settings lock:", error);
     }
-  };
+  }, []);
+
+  // Load all settings on mount
+  useEffect(() => {
+    loadBrowserEnforcementStatus();
+    loadSafeSearchStatus();
+    loadShutdownPreventionStatus();
+    loadWatchdogStatus();
+    loadSettingsLock();
+  }, [
+    loadBrowserEnforcementStatus,
+    loadSafeSearchStatus,
+    loadShutdownPreventionStatus,
+    loadWatchdogStatus,
+    loadSettingsLock,
+  ]);
 
   const handleWatchdogToggle = async (enabled: boolean) => {
     setUpdating(true);
