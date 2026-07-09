@@ -9,13 +9,9 @@
 
 A self-control website and application blocker for Linux + Hyprland, built around a **tamper-resistant daemon**. Blocks distracting sites and apps on a schedule, and is deliberately hard to switch off in a moment of weakness — watchdog processes, NTP-verified time locks, and browser enforcement all work to keep the block in place until it's supposed to end.
 
-<!-- SCREENSHOTS: replace these placeholders with real captures (docs/screenshots/*.png)
-![Dashboard](docs/screenshots/dashboard.png)
-![Block configuration](docs/screenshots/block-config.png)
-![Blocked page](docs/screenshots/blocked-page.png)
--->
-
-> 🚧 **Screenshots coming soon** — Dashboard, block configuration, and the in-browser blocked page.
+---
+![Dashboard](docs/screenshots/HyprBlocker_Dashboard.png)
+---
 
 ## Why this project is interesting
 
@@ -35,6 +31,10 @@ The design principle throughout: **the daemon is the source of truth and the ext
 
 It's equally honest about what it *can't* stop — see [Limitations](#limitations).
 
+---
+![Block configuration](docs/screenshots/HyprBlocker_Blocks.png)
+---
+
 ## Features
 
 - **Website blocking** — domain, subdomain, wildcard (`*.reddit.com`), and path-specific (`youtube.com/shorts`) patterns
@@ -48,6 +48,10 @@ It's equally honest about what it *can't* stop — see [Limitations](#limitation
 - **Statistics** — track blocked attempts over time
 - **Desktop GUI** — React + TypeScript frontend in a native pywebview window
 - **System tray** — status icon and quick-access menu
+
+---
+![Blocked page](docs/screenshots/HyprBlocker_BlockedPage.png)
+---
 
 ## Architecture
 
@@ -237,4 +241,4 @@ The threat model is *impulsive* bypass, not adversarial admin access. The watchd
 
 ---
 
-Built for personal use on Arch Linux + Hyprland — designed specifically for tiling window managers and strict enforcement. The goal is productivity, not suffering. 🚀
+Built for personal use on Arch Linux + Hyprland — designed specifically for tiling window managers and strict enforcement. The goal is productivity, not suffering.
