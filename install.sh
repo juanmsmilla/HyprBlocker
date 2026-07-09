@@ -205,29 +205,6 @@ EOF
 # Reload systemd
 systemctl --user daemon-reload
 
-# Clean up pre-rename (website-blocker) artifacts that are safe to remove.
-# The old systemd unit and executables are left alone while a pre-rename
-# daemon/tray is still running — those processes re-enable the old unit
-# themselves and are replaced at the next reboot.
-echo "Cleaning up pre-rename artifacts..."
-rm -f "$HOME/.local/share/applications/WebsiteBlocker.desktop" \
-      "$HOME/.local/share/applications/icons/WebsiteBlocker.png" \
-      "$HOME/.config/autostart/website-blocker-tray.desktop"
-if ! systemctl --user is-active --quiet website-blocker 2>/dev/null; then
-    # Old-name native messaging manifests (superseded by com.hyprblocker.host;
-    # still needed while a pre-rename background.js may be loaded in a browser)
-    rm -f "$HOME/.mozilla/native-messaging-hosts/com.websiteblocker.host.json" \
-          "$HOME/.config/google-chrome/NativeMessagingHosts/com.websiteblocker.host.json" \
-          "$HOME/.config/chromium/NativeMessagingHosts/com.websiteblocker.host.json" \
-          "$HOME/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts/com.websiteblocker.host.json"
-    systemctl --user disable website-blocker 2>/dev/null || true
-    rm -f "$HOME/.config/systemd/user/website-blocker.service"
-    systemctl --user daemon-reload
-    rm -f "$BIN_DIR/website-blocker" "$BIN_DIR/website-blocker-tray"
-    # Legacy data-dir compatibility symlink (never remove a real directory)
-    [ -L "$HOME/.local/share/website-blocker" ] && rm -f "$HOME/.local/share/website-blocker"
-fi
-
 echo ""
 echo "=== Installation Complete ==="
 echo ""

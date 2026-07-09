@@ -479,9 +479,7 @@ def is_tray_running() -> bool:
     """Check if the tray application is already running."""
     try:
         result = subprocess.run(
-            # Matches both hyprblocker-tray and the pre-rename
-            # website-blocker-tray (may still run until next login)
-            ['pgrep', '-f', 'blocker-tray'],
+            ['pgrep', '-f', 'hyprblocker-tray'],
             capture_output=True,
             text=True
         )

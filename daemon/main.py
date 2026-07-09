@@ -15,24 +15,10 @@ from daemon.api import app, set_session_factory
 from daemon.config import get_config, get_config_path
 from daemon.database import Block, create_session_factory, init_database
 from daemon.hyprland_monitor import get_hyprland_monitor, init_hyprland_monitor
-from daemon.legacy_migration import migrate_legacy_config_dir
 from daemon.lock_manager import get_lock_manager, init_lock_manager
 from daemon.scheduler import get_scheduler, init_scheduler
 from daemon.service_enforcer import ensure_service_enabled
 from daemon.watchdog import WatchdogManager
-
-# Move a pre-rename config dir into place before anything reads or creates
-# files at the new location (get_config() below writes a default config.json,
-# which would make the migration skip forever). While a pre-rename daemon is
-# still running we must exit instead of proceeding — we couldn't bind the
-# port anyway, and systemd retries until the old daemon is gone.
-if migrate_legacy_config_dir() == "deferred":
-    print(
-        "Pre-rename daemon still running; exiting so config migration can "
-        "run on a later start (expected until the next reboot).",
-        file=sys.stderr,
-    )
-    sys.exit(0)
 
 
 # Set up logging

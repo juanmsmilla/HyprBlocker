@@ -173,8 +173,6 @@ The "Browsers" page shows which running browsers have a live extension heartbeat
 | `~/.config/hyprblocker/daemon.log` | Daemon log |
 | `~/.config/systemd/user/hyprblocker.service` | Systemd unit |
 
-> **A note on naming:** the project was originally called `website-blocker` and has been renamed to **HyprBlocker** throughout — executables, systemd unit, and config paths. Because the daemon actively resists being stopped (shutdown prevention, watchdogs, NTP-verified locks), the rename can't happen in place on a live install: the daemon migrates a legacy `~/.config/website-blocker` directory to `~/.config/hyprblocker` automatically on its first start after the old daemon is gone (i.e. after a reboot), and a temporary `website-blocker.service` shim forwards restart requests from still-running pre-rename watchdogs to the new unit. The native-messaging host (`com.hyprblocker.host`) and Firefox extension ID (`hyprblocker@hyprblocker.local`) were renamed as well — browser-side manifests for both names coexist during the transition, and extensions just need a one-time reload.
-
 ## API
 
 The daemon exposes a REST API on `http://127.0.0.1:8765`. Highlights:
