@@ -72,6 +72,8 @@ class TestUrlMatchesPattern:
             "youtube.com/shorts",
             "youtube.com/shorts/abc123",
             "https://youtube.com/shorts",
+            "www.youtube.com/shorts",  # subdomains match on path patterns
+            "youtube.com/shorts?feature=share",  # query string after the path
         ],
     )
     def test_path_pattern_matches(self, url):
@@ -83,6 +85,7 @@ class TestUrlMatchesPattern:
             "youtube.com",
             "youtube.com/watch?v=abc",
             "youtube.com/feed",
+            "youtube.com/shortsfilm",  # prefix of the path segment, not a subpath
         ],
     )
     def test_path_pattern_rejects_other_paths(self, url):

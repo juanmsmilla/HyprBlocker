@@ -49,8 +49,31 @@ class SiteBlocker:
 
         # Check if pattern includes path
         if '/' in pattern:
-            # Path-specific matching - URL must match exactly or be a subpath
-            return url.startswith(pattern)
+            # Path-specific matching with subdomain support. Mirrors
+            # matchesPatternWithPath in extension/matcher.js: the domain part
+            # matches subdomains, and the path must match at a boundary (the
+            # whole path, or a subpath starting with '/' or a query with '?')
+            # so that "youtube.com/shorts" does not match "youtube.com/shortsfilm".
+            if pattern.endswith('/'):
+                pattern = pattern[:-1]
+            if url.endswith('/'):
+                url = url[:-1]
+
+            pattern_domain, _, pattern_rest = pattern.partition('/')
+            pattern_path = '/' + pattern_rest
+
+            url_domain, _, url_rest = url.partition('/')
+            url_path = '/' + url_rest
+
+            domains_match = (
+                url_domain == pattern_domain or url_domain.endswith('.' + pattern_domain)
+            )
+            paths_match = (
+                url_path == pattern_path
+                or url_path.startswith(pattern_path + '/')
+                or url_path.startswith(pattern_path + '?')
+            )
+            return domains_match and paths_match
         else:
             # Domain-only pattern - match domain, subdomains, and all subpaths
             url_domain = url.split('/')[0]
