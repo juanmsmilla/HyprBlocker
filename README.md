@@ -25,7 +25,8 @@ Most website blockers are trivially bypassed: kill the process, change the clock
 | Disable or remove the browser extension | Daemon tracks extension heartbeats and **closes any browser** that stops reporting (60s timeout) |
 | Use incognito mode | Extension reports incognito status; enforcement requires it to be enabled |
 | Spoof the extension's identity | Native messaging host verifies the real browser PID against Hyprland's window list |
-| Edit settings during a block | Per-block lock mode makes configuration read-only (stricter rules can still be *added*) |
+| Edit settings during a block | Locks are tightening-only: stricter rules and protections can still be *added*, but nothing can be loosened until the lock expires |
+| Edit the unit, code, or database on disk | Optional [root-owned mode](#root-owned-architecture-optional-opt-in) moves code and enforcement state behind sudo; a root enforcer service repairs tampering and delays any loosening change by 24–48h |
 
 The design principle throughout: **the daemon is the source of truth and the extension is untrusted**. In-browser blocking is a convenience layer; the real enforcement is the daemon killing non-compliant browsers via Hyprland IPC. And when anything fails — network, database, NTP — the system **fails closed** (blocks) rather than open.
 
@@ -42,7 +43,10 @@ It's equally honest about what it *can't* stop — see [Limitations](#limitation
 - **App blocking** — closes blocked applications via Hyprland IPC (window-class matching)
 - **Scheduling** — always-on or time ranges per weekday (e.g. weekdays 9–5)
 - **Lock mode** — block configuration becomes read-only while active
-- **Settings lock** — freeze all settings until a chosen date/time, NTP-verified
+- **Settings lock** — freeze settings until a chosen date/time, NTP-verified; tightening-only, so protections can still be enabled while locked
+- **Temporary access grants** — ask an AI judge (LLM via OpenRouter) for a time-limited exception to a blocked site; decisions follow an editable policy, fail closed, and are audit-logged
+- **Grant judge policy** — shipped strict/lenient/accountability presets or a free-form document; while locked, only switching to a stricter preset is accepted
+- **Root-owned mode (opt-in)** — two-tier deployment that moves code and enforcement state behind sudo, with a root enforcer that repairs tampering and delays loosening changes
 - **Watchdog system** — self-healing mesh of processes that restart the daemon if killed
 - **Safe search enforcement** — forces strict safe search on Google, Bing, and DuckDuckGo
 - **Statistics** — track blocked attempts over time
@@ -78,8 +82,9 @@ It's equally honest about what it *can't* stop — see [Limitations](#limitation
 2. **Desktop app** (`desktop-app/`) — pywebview shell around a React + TypeScript (Vite) frontend
 3. **Tray app** (`tray/`) — pystray/AppIndicator status icon
 4. **Browser extension** (`extension/`) — Manifest v3 WebExtension; in-browser blocking + compliance heartbeat
+5. **Root enforcer** (`enforcer/`) — optional root-tier system service (see [root-owned mode](#root-owned-architecture-optional-opt-in)); owns the authoritative lock and enforcement state, watches the user daemon, and fails closed
 
-Deeper dives: [Watchdog system](docs/WATCHDOG.md) · [Systemd ordering & native messaging](docs/TECHNICAL_CONCEPTS.md)
+Deeper dives: [Watchdog system](docs/WATCHDOG.md) · [Systemd ordering & native messaging](docs/TECHNICAL_CONCEPTS.md) · [Root-owned architecture](documentation/ROOT_MIGRATION_DESIGN.md)
 
 ## Quick Start
 
@@ -161,7 +166,13 @@ Allow lists always take precedence over block lists. When multiple blocks match 
 
 ### Lock mode
 
-While a block's lock is active: the block can't be edited or deleted, the daemon refuses to stop, and only *stricter* rules can be added. The settings lock does the same for global settings, with expiry checked against NTP so changing the system clock doesn't help.
+While a block's lock is active: the block can't be edited or deleted, the daemon refuses to stop, and only *stricter* rules can be added. The settings lock applies the same asymmetry to global settings — protections (watchdogs, safe search, browser enforcement) can still be *enabled* or increased while locked, but nothing can be disabled or loosened — with expiry checked against NTP so changing the system clock doesn't help.
+
+### Access grants
+
+Instead of unlocking everything, you can request a **temporary exception** for a specific URL: give a reason and a duration, and an LLM judge (OpenRouter) decides per your grant-judge policy. Approved grants overlay an allow pattern onto every matching block and expire automatically; every request and verdict lands in an append-only audit log. No API key or no network means grants fail closed (deny) — the blocker itself never depends on the judge.
+
+The judge policy is editable in Settings: pick a shipped preset (strict / lenient / accountability) or write your own. Switching to a stricter preset applies immediately; anything else counts as loosening — rejected while settings are locked, and in root-owned mode applied only after the enforcer's 24–48h delay.
 
 ### Browser status & grace period
 
@@ -176,6 +187,9 @@ The "Browsers" page shows which running browsers have a live extension heartbeat
 | `~/.config/hyprblocker/watchdog_state.json` | Watchdog process state |
 | `~/.config/hyprblocker/daemon.log` | Daemon log |
 | `~/.config/systemd/user/hyprblocker.service` | Systemd unit |
+| `.env` (repo root) | `OPENROUTER_API_KEY` for the grant judge (optional — without it, grant requests are denied) |
+
+In root-owned mode the code moves to `/opt/hyprblocker` and state to `/var/lib/hyprblocker` (user-writable `user/`, root-owned `secure/`) — see [`documentation/ROOT_INSTALL.md`](documentation/ROOT_INSTALL.md).
 
 ## API
 
@@ -191,6 +205,9 @@ The daemon exposes a REST API on `http://127.0.0.1:8765`. Highlights:
 | `/api/blocked-sites` | GET | Current patterns, consumed by the extension |
 | `/api/settings/lock` | GET/POST/DELETE | NTP-verified settings lock |
 | `/api/settings/watchdog` | GET/PUT | Watchdog enable/disable |
+| `/api/settings/judge-policy` | GET/PUT | Grant-judge policy (presets + free-form; tightening-only while locked) |
+| `/api/grants/request` | POST | Ask the AI judge for a temporary exception |
+| `/api/grants` | GET | List active grants |
 
 ## Development
 
