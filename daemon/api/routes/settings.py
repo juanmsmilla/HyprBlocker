@@ -268,9 +268,8 @@ def _pending_judge_policy() -> tuple[str | None, str | None]:
 @router.get("/judge-policy", response_model=JudgePolicyResponse)
 async def get_judge_policy():
     """Get the active grant-judge policy, available presets, and any pending edit."""
-    from daemon.grants import policy as grant_policy
-
     from daemon import paths
+    from daemon.grants import policy as grant_policy
 
     text = grant_policy.load_policy_text()
     pending_text, pending_at = _pending_judge_policy()
