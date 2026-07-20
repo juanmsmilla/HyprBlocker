@@ -87,6 +87,50 @@ class StatusResponse(BaseModel):
     active_blocks: int
     browsers_detected: int
     browsers_compliant: int
+    # Root-migration fields (see daemon.paths / daemon.enforcer_link):
+    layout: str = "user"  # 'user' | 'root'
+    enforcement_tier: str = "user"  # 'user' (watchdog mesh) | 'root' (enforcer)
+    dev_mode: bool = True  # root enforcement intentionally weakened (pre-graduation)
+    enforcer_down: bool = False  # root layout: enforcer snapshot stale/absent
+    settings_locked: bool = False
+    lock_until: str | None = None
+    active_grants: int = 0
+
+
+class GrantRequestBody(BaseModel):
+    """Tier-1 blocker-rule exception request from the UI."""
+
+    url: str
+    reason: str
+    minutes: int = 30
+
+
+class GrantDecisionResponse(BaseModel):
+    decision: str  # 'allow' | 'deny'
+    stage: str  # 'denylist' | 'ratelimit' | 'judge'
+    reason: str
+    granted_minutes: int = 0
+    expires_at: str | None = None
+
+
+class ActiveGrantResponse(BaseModel):
+    id: str
+    url: str
+    scope: str
+    reason: str
+    granted_at: str
+    expires_at: str
+
+
+class GrantsListResponse(BaseModel):
+    active: list[ActiveGrantResponse]
+    rate_limit_remaining: int
+
+
+class BreakGlassResponse(BaseModel):
+    state: str  # 'inactive' | 'pending' | 'released'
+    triggered_at: str | None = None
+    release_at: str | None = None
 
 
 class StatsResponse(BaseModel):

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Blocks, BarChart3, Globe, Settings } from 'lucide-react';
+import { LayoutDashboard, Blocks, BarChart3, Globe, KeyRound, Settings } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useStatus } from '../../context/StatusContext';
 import type { Page } from '../../types';
@@ -14,6 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'blocks', label: 'Blocks', icon: Blocks },
   { id: 'stats', label: 'Statistics', icon: BarChart3 },
   { id: 'browsers', label: 'Browsers', icon: Globe },
+  { id: 'grants', label: 'Grants', icon: KeyRound },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -22,6 +23,8 @@ export function Sidebar() {
   const { status } = useStatus();
 
   const isConnected = status?.running ?? false;
+  const showDevMode = (status?.dev_mode ?? false) && status?.layout === 'root';
+  const showEnforcerDown = status?.enforcer_down ?? false;
 
   return (
     <nav className="w-60 bg-bg-sidebar text-text-bright flex flex-col fixed h-screen left-0 top-0">
@@ -55,7 +58,17 @@ export function Sidebar() {
       </ul>
 
       {/* Footer - Daemon Status */}
-      <div className="p-4 border-t border-white/10">
+      <div className="p-4 border-t border-white/10 space-y-3">
+        {showDevMode && (
+          <div className="px-2.5 py-1.5 rounded-md bg-warning/20 text-warning text-xs font-medium">
+            DEV MODE — root enforcement weakened
+          </div>
+        )}
+        {showEnforcerDown && (
+          <div className="px-2.5 py-1.5 rounded-md bg-danger/20 text-danger text-xs font-medium">
+            ENFORCER DOWN
+          </div>
+        )}
         <div className="flex items-center gap-2 text-sm">
           <span
             className={`w-2.5 h-2.5 rounded-full ${

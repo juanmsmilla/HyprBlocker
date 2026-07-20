@@ -18,8 +18,9 @@ import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
+
+from daemon import paths
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,8 @@ COMMON_NAMES = [
     "at-spi-bus", "ibus-daemon", "pulseaudio", "pipewire"
 ]
 
-# Paths
-CONFIG_DIR = Path.home() / ".config" / "hyprblocker"
-WATCHDOG_STATE_FILE = CONFIG_DIR / "watchdog_state.json"
-CONFIG_FILE = CONFIG_DIR / "config.json"
+# Paths (resolved through daemon.paths so the user/root layouts agree)
+WATCHDOG_STATE_FILE = paths.watchdog_state_path()
 
 # Timing constants
 DAEMON_CHECK_INTERVAL = 5  # seconds
@@ -126,70 +125,24 @@ class WatchdogState:
         on its next save. Write-to-temp + rename makes readers always see a
         complete file.
         """
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        paths.ensure_dir(WATCHDOG_STATE_FILE.parent)
         tmp_file = WATCHDOG_STATE_FILE.with_suffix(f".tmp.{os.getpid()}")
         with open(tmp_file, 'w') as f:
             json.dump(asdict(self), f, indent=2)
         os.replace(tmp_file, WATCHDOG_STATE_FILE)
 
 
-def read_config_lock_until() -> datetime | None:
-    """Read settings_lock_until from config file."""
-    try:
-        if not CONFIG_FILE.exists():
-            return None
-
-        with open(CONFIG_FILE) as f:
-            data = json.load(f)
-
-        lock_until_str = data.get('security', {}).get('settings_lock_until')
-        if not lock_until_str:
-            return None
-
-        return datetime.fromisoformat(lock_until_str)
-    except Exception as e:
-        logger.error(f"Failed to read config lock_until: {e}")
-        return None
-
-
 def is_settings_locked_ntp() -> bool:
     """Check if settings are locked, using NTP time verification.
 
-    Returns True if locked (fail-safe: returns True on NTP failure during lock).
+    Thin backward-compatible wrapper around the consolidated
+    :mod:`daemon.settings_lock` reader (formerly this module carried its own
+    duplicate NTP server list and config parser). Returns True if locked
+    (fail-safe: returns True on NTP failure during an active lock).
     """
-    lock_until = read_config_lock_until()
-    if lock_until is None:
-        return False
+    from daemon.settings_lock import is_settings_locked
 
-    # Try NTP verification
-    try:
-        import ntplib
-        ntp_client = ntplib.NTPClient()
-        ntp_servers = ["pool.ntp.org", "time.google.com", "time.cloudflare.com"]
-
-        for server in ntp_servers:
-            try:
-                response = ntp_client.request(server, timeout=5)
-                ntp_time = datetime.fromtimestamp(response.tx_time, tz=UTC)
-
-                # Compare with lock_until (ensure timezone awareness)
-                if lock_until.tzinfo is None:
-                    lock_until = lock_until.replace(tzinfo=UTC)
-
-                return ntp_time < lock_until
-            except Exception:
-                continue
-
-        # All NTP servers failed - fail-safe: assume locked
-        logger.warning("NTP verification failed, assuming settings locked (fail-safe)")
-        return True
-
-    except ImportError:
-        # ntplib not available, use system time
-        now = datetime.now(UTC)
-        if lock_until.tzinfo is None:
-            lock_until = lock_until.replace(tzinfo=UTC)
-        return now < lock_until
+    return is_settings_locked(verify_ntp=True)
 
 
 def check_daemon_health(port: int = 8765) -> bool:

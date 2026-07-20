@@ -37,6 +37,13 @@ export interface DaemonStatus {
   active_blocks: number;
   browsers_detected: number;
   browsers_compliant: number;
+  layout?: 'user' | 'root';
+  enforcement_tier?: 'user' | 'root';
+  dev_mode?: boolean;
+  enforcer_down?: boolean;
+  settings_locked?: boolean;
+  lock_until?: string | null;
+  active_grants?: number;
   error?: string;
 }
 
@@ -197,8 +204,39 @@ export interface SettingsLockResponse {
   stillLocked?: boolean;
 }
 
+// Grants
+export interface GrantDecision {
+  decision: 'allow' | 'deny';
+  stage: string;
+  reason: string;
+  granted_minutes: number;
+  expires_at: string | null;
+}
+
+export interface Grant {
+  id: string;
+  url: string;
+  scope: string;
+  reason: string;
+  granted_at: string;
+  expires_at: string;
+}
+
+export interface GrantsList {
+  active: Grant[];
+  rate_limit_remaining: number;
+}
+
+export type BreakglassState = 'idle' | 'requested' | 'pending' | 'released';
+
+export interface BreakglassStatus {
+  state: BreakglassState;
+  triggered_at: string | null;
+  release_at: string | null;
+}
+
 // Navigation pages
-export type Page = 'dashboard' | 'blocks' | 'stats' | 'browsers' | 'settings';
+export type Page = 'dashboard' | 'blocks' | 'stats' | 'browsers' | 'grants' | 'settings';
 
 // Toast types
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -239,6 +277,10 @@ declare global {
         get_settings_lock(): Promise<SettingsLockStatus>;
         lock_settings(lock_until: string): Promise<SettingsLockResponse>;
         unlock_settings(): Promise<SettingsLockResponse>;
+        request_grant(url: string, reason: string, minutes: number): Promise<GrantDecision>;
+        list_grants(): Promise<GrantsList>;
+        request_breakglass(): Promise<BreakglassStatus>;
+        get_breakglass(): Promise<BreakglassStatus>;
       };
     };
   }

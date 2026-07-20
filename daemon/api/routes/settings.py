@@ -242,9 +242,16 @@ async def update_watchdog_settings(request: WatchdogUpdateRequest):
 # Settings lock endpoints
 @router.get("/lock", response_model=SettingsLockResponse)
 async def get_settings_lock():
-    """Get current settings lock status."""
-    config = get_config()
-    lock_until_str = config.security.settings_lock_until
+    """Get current settings lock status.
+
+    Reads the authoritative lock via :mod:`daemon.settings_lock` so it is correct
+    in both layouts (config.json in user layout; root-owned secure/lock.json in
+    root layout).
+    """
+    from daemon import settings_lock
+
+    lock_until = settings_lock.read_lock_until()
+    lock_until_str = lock_until.isoformat() if lock_until else None
 
     if not lock_until_str:
         return SettingsLockResponse(
@@ -308,6 +315,30 @@ async def lock_settings(request: SettingsLockRequest):
     if lock_until.tzinfo is None:
         lock_until = lock_until.replace(tzinfo=UTC)
 
+    # Root layout: the authoritative lock lives in root-owned secure/lock.json,
+    # which the user daemon cannot write. Drop a request for the enforcer instead
+    # (it applies tightening — extending the lock — immediately). (Review M3.)
+    from daemon import paths, settings_lock
+
+    if paths.layout() == "root":
+        current_lock = settings_lock.read_lock_until()
+        if current_lock is not None:
+            if current_lock.tzinfo is None:
+                current_lock = current_lock.replace(tzinfo=UTC)
+            if lock_until <= current_lock:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot shorten lock. New time must be later than current lock expiry.",
+                )
+        elif lock_until <= now:
+            # New lock with no active lock present: must be in the future
+            # (parity with the user-layout branch below).
+            raise HTTPException(status_code=400, detail="lock_until must be in the future")
+        from daemon import requests_bridge
+
+        requests_bridge.drop_request(requests_bridge.build_lock_request(lock_until.isoformat()))
+        return {"success": True, "pending": True, "lock_until": lock_until.isoformat()}
+
     # Check if already locked
     config = get_config()
     current_lock_str = config.security.settings_lock_until
@@ -357,6 +388,16 @@ async def unlock_settings():
             status_code=403,
             detail="Settings are still locked. Cannot unlock before expiry."
         )
+
+    # Root layout: only the enforcer can write the authoritative lock. Since the
+    # lock has already expired (checked above), drop a clear request. (Review M3.)
+    from daemon import paths
+
+    if paths.layout() == "root":
+        from daemon import requests_bridge
+
+        requests_bridge.drop_request(requests_bridge.build_lock_request(None))
+        return {"success": True, "pending": True}
 
     # Clear the lock
     config = get_config()

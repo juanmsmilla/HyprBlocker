@@ -17,11 +17,11 @@ if __package__ in (None, ""):
     # skips this branch entirely.
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from daemon import paths
 from daemon.watchdog import Watchdog
 
 # Set up logging to file
-log_dir = os.path.expanduser("~/.config/hyprblocker")
-os.makedirs(log_dir, exist_ok=True)
+log_dir = str(paths.ensure_dir(paths.log_dir()))
 log_file = os.path.join(log_dir, "watchdog.log")
 
 logging.basicConfig(

@@ -17,7 +17,7 @@ from daemon.database import Block, create_session_factory, init_database
 from daemon.hyprland_monitor import get_hyprland_monitor, init_hyprland_monitor
 from daemon.lock_manager import get_lock_manager, init_lock_manager
 from daemon.scheduler import get_scheduler, init_scheduler
-from daemon.service_enforcer import ensure_service_enabled
+from daemon.service_enforcer import enforce_user_side
 from daemon.watchdog import WatchdogManager
 
 
@@ -28,8 +28,9 @@ def setup_logging():
     log_level = getattr(logging, config.daemon.log_level.upper(), logging.INFO)
 
     # Create log directory
-    log_dir = os.path.expanduser("~/.config/hyprblocker")
-    os.makedirs(log_dir, exist_ok=True)
+    from daemon import paths
+
+    log_dir = str(paths.ensure_dir(paths.log_dir()))
     log_file = os.path.join(log_dir, "daemon.log")
 
     # Configure logging
@@ -78,9 +79,45 @@ async def schedule_check_job():
         config = get_config()
         _shutdown_prevention_cache = config.security.shutdown_prevention_enabled
 
-        # Prevent `systemctl --user disable` from sticking
+        # Prevent `systemctl --user disable` from sticking, and (root layout) delete
+        # any user-writable shadow unit / native-messaging manifest that would
+        # override the root-owned copies.
         if _shutdown_prevention_cache:
-            ensure_service_enabled()
+            enforce_user_side()
+
+        # Re-evaluate the watchdog-mesh fallback every tick, not just at startup:
+        # if the root enforcer was healthy at boot (mesh not spawned) and later
+        # dies, the mesh must come up now so protection never silently regresses
+        # in the post-startup window (review finding R6).
+        _ensure_mesh_fallback(config)
+
+        # Expire overdue tier-1 grants so they stop being overlaid onto
+        # blocked-sites even across daemon restarts (grants also self-expire at
+        # read time; this keeps the store from growing unbounded).
+        try:
+            from datetime import UTC, datetime
+
+            from daemon.grants import store as grant_store
+
+            grant_store.prune_expired(datetime.now(UTC))
+        except Exception as e:
+            logger.debug(f"Grant prune skipped: {e}")
+
+        # Root layout: answer the enforcer's liveness challenge (R4). We echo the
+        # current challenge nonce into the user-writable heartbeat so the enforcer
+        # can attest "the real daemon is alive and enforcing". A write failure is
+        # loud (M4) — it means the enforcer will fail closed.
+        from daemon import paths
+
+        if paths.layout() == "root":
+            try:
+                from enforcer import heartbeat as hb
+
+                nonce = hb.read_challenge()
+                if nonce is not None:
+                    hb.write_echo(nonce, os.getpid())
+            except Exception as e:
+                logger.error("Heartbeat echo FAILED (enforcer may fail closed): %s", e)
 
     except Exception as e:
         logger.error(f"Error in schedule check job: {e}")
@@ -124,12 +161,88 @@ def handle_signal(signum, frame):
         _server.should_exit = True
 
 
+def _ensure_mesh_fallback(config) -> None:
+    """Spawn the watchdog mesh if it should run now but isn't already.
+
+    Called every schedule tick. Under the root layout this brings the mesh up as
+    a fallback when the enforcer transitions healthy→down mid-session; under the
+    user layout the mesh is spawned at startup and this is a no-op once running.
+    """
+    global _watchdog_manager
+    from daemon import enforcer_link
+
+    if not enforcer_link.should_run_watchdog_mesh(
+        config.security.shutdown_prevention_enabled,
+        config.security.watchdog_enabled,
+    ):
+        return
+    # Already have live watchdogs? Then nothing to do.
+    if _watchdog_manager is not None and _watchdog_manager.get_active_watchdogs():
+        return
+    logger.warning("Spawning watchdog mesh fallback (enforcer down or user layout)")
+    _watchdog_manager = WatchdogManager(
+        watchdog_count=config.security.watchdog_count,
+        daemon_port=config.daemon.port,
+    )
+    _watchdog_manager.spawn_watchdogs()
+
+
+def _root_layout_startup() -> None:
+    """One-shot reconciliation at the first root-layout boot after install.
+
+    Review R9: the installer *copies* the live ``~/.config/hyprblocker`` state so
+    the running daemon is never disturbed, which opens a divergence window — any
+    config/DB change the user makes between install and reboot lands in the old
+    files. Here, on the first root-layout startup, we re-copy those files if the
+    ``~/.config`` source is newer than the ``/var/lib`` copy, closing that window
+    before the DB is opened. Then we delete the user-dir shadow unit the installer
+    left in place so the root-owned ``/etc/systemd/user`` unit wins thereafter.
+
+    Entirely best-effort and guarded: a no-op under the user layout, and any error
+    is logged rather than blocking daemon startup.
+    """
+    from daemon import paths
+
+    if paths.layout() != "root":
+        return
+
+    import shutil
+    from pathlib import Path
+
+    legacy = Path.home() / ".config" / "hyprblocker"
+    try:
+        dest = paths.user_dir()
+        paths.ensure_dir(dest)
+        for name in ("config.json", "blocker.db", "blocker.db-wal", "blocker.db-shm"):
+            src = legacy / name
+            tgt = dest / name
+            if src.exists() and (not tgt.exists() or src.stat().st_mtime > tgt.stat().st_mtime):
+                shutil.copy2(src, tgt)
+                logger.info("Re-synced %s from legacy user state", name)
+    except Exception as e:
+        logger.error("Root-layout state re-sync failed: %s", e)
+
+    try:
+        from daemon.service_enforcer import delete_shadow_units
+
+        delete_shadow_units()
+    except Exception as e:
+        logger.error("Shadow-unit deletion failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app):
     """Lifespan context manager for FastAPI."""
     global _scheduler, _session_factory, _watchdog_manager
 
     logger.info("Starting HyprBlocker Daemon")
+
+    # Root layout: reconcile with the just-installed root tree before touching
+    # any state (re-sync live user state that changed between install and reboot,
+    # then delete the user-dir shadow unit so /etc/systemd/user wins). Guarded so
+    # it is a no-op in the user layout. Must run BEFORE the DB is opened (R9).
+    _root_layout_startup()
+
     config = get_config()
     logger.info(f"Configuration loaded from {get_config_path()}")
 
@@ -167,8 +280,16 @@ async def lifespan(app):
     _scheduler.start()
     logger.info("Scheduler started")
 
-    # Spawn watchdog processes if both shutdown prevention AND watchdog are enabled
-    if config.security.shutdown_prevention_enabled and config.security.watchdog_enabled:
+    # Spawn watchdog processes if both shutdown prevention AND watchdog are enabled.
+    # Under the root layout the root enforcer supersedes the mesh — but only while
+    # it is actually alive; if its snapshot is stale/absent the mesh runs as a
+    # fallback so protection never silently regresses (review finding R6).
+    from daemon import enforcer_link
+
+    if enforcer_link.should_run_watchdog_mesh(
+        config.security.shutdown_prevention_enabled,
+        config.security.watchdog_enabled,
+    ):
         _watchdog_manager = WatchdogManager(
             watchdog_count=config.security.watchdog_count,
             daemon_port=config.daemon.port

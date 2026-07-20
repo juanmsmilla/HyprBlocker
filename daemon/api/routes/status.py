@@ -25,7 +25,12 @@ router = APIRouter(prefix="/api", tags=["status"])
 
 @router.get("/status", response_model=StatusResponse)
 async def get_status(session: AsyncSession = Depends(get_session)):
-    """Get daemon status."""
+    """Get daemon status, including root-migration tier/lock/grant state."""
+    from datetime import UTC, datetime
+
+    from daemon import enforcer_link, paths, settings_lock
+    from daemon.grants import store as grant_store
+
     tracker = get_heartbeat_tracker()
 
     # Count active blocks
@@ -38,12 +43,29 @@ async def get_status(session: AsyncSession = Depends(get_session)):
     browsers_detected = len(browser_statuses)
     browsers_compliant = sum(1 for b in browser_statuses if b.get("compliant", False))
 
+    layout = paths.layout()
+    enforcer_down = layout == "root" and not enforcer_link.enforcer_alive()
+    # Under the root layout the enforcer is authoritative; the mesh is only a
+    # fallback, so the "tier" reflects whether the enforcer is actually up.
+    enforcement_tier = "root" if (layout == "root" and not enforcer_down) else "user"
+
+    lock_until = settings_lock.read_lock_until()
+    now = datetime.now(UTC)
+    active_grants = len(grant_store.active_grants(grant_store.load(), now))
+
     return StatusResponse(
         running=True,
         active_rules=0,  # Legacy field, no longer used
         active_blocks=active_blocks,
         browsers_detected=browsers_detected,
-        browsers_compliant=browsers_compliant
+        browsers_compliant=browsers_compliant,
+        layout=layout,
+        enforcement_tier=enforcement_tier,
+        dev_mode=paths.is_dev_mode(),
+        enforcer_down=enforcer_down,
+        settings_locked=settings_lock.is_settings_locked(verify_ntp=False),
+        lock_until=lock_until.isoformat() if lock_until else None,
+        active_grants=active_grants,
     )
 
 
@@ -200,6 +222,8 @@ async def get_blocked_sites():
 
     # Return per-block data
     blocks_data = []
+    locked_block_ids = set()
+    now = datetime.now()
 
     for block in active_blocks:
         block_data = {
@@ -225,7 +249,21 @@ async def get_blocked_sites():
                 if line.strip()
             ]
 
+        # A currently-locked block must never be loosened by a grant overlay.
+        if block.lock_mode == "locked_until" and block.lock_until and block.lock_until > now:
+            locked_block_ids.add(block.id)
+
         blocks_data.append(block_data)
+
+    # Overlay active tier-1 grants at read time (review M6 — no block-row mutation).
+    from datetime import UTC
+
+    from daemon.grants import store as grant_store
+
+    grants = grant_store.active_grants(grant_store.load(), datetime.now(UTC))
+    blocks_data = grant_store.overlay_blocks(
+        blocks_data, grants, datetime.now(UTC), locked_block_ids
+    )
 
     return {
         "blocks": blocks_data,

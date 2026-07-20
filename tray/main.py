@@ -25,6 +25,13 @@ class DaemonStatus:
     active_blocks: int
     browsers_detected: int
     browsers_compliant: int
+    layout: str = "user"
+    enforcement_tier: str = "user"
+    dev_mode: bool = False
+    enforcer_down: bool = False
+    settings_locked: bool = False
+    lock_until: str | None = None
+    active_grants: int = 0
 
 
 class DaemonClient:
@@ -112,9 +119,12 @@ class TrayApp:
                 if self.client.is_daemon_running():
                     status = self.client.get_status()
                     if status:
-                        self._status_text = (
-                            f"Running - {status.active_blocks} active blocks"
-                        )
+                        text = f"Running - {status.active_blocks} active blocks"
+                        if status.dev_mode and status.layout == "root":
+                            text += " — DEV MODE"
+                        if status.enforcer_down:
+                            text += " ⚠ ENFORCER DOWN"
+                        self._status_text = text
                     else:
                         self._status_text = "Running"
                 else:

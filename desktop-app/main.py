@@ -25,7 +25,14 @@ class API:
                 'active_rules': status.active_rules,
                 'active_blocks': status.active_blocks,
                 'browsers_detected': status.browsers_detected,
-                'browsers_compliant': status.browsers_compliant
+                'browsers_compliant': status.browsers_compliant,
+                'layout': status.layout,
+                'enforcement_tier': status.enforcement_tier,
+                'dev_mode': status.dev_mode,
+                'enforcer_down': status.enforcer_down,
+                'settings_locked': status.settings_locked,
+                'lock_until': status.lock_until,
+                'active_grants': status.active_grants
             }
         return {'running': False, 'error': 'Daemon not reachable'}
 
@@ -451,6 +458,58 @@ class API:
                 'success': False,
                 'error': str(e)
             }
+
+    def request_grant(self, url: str, reason: str, minutes: int) -> dict:
+        """Request a temporary access grant for a URL.
+
+        Args:
+            url: URL to request access to
+            reason: Reason for the request
+            minutes: Requested duration in minutes
+
+        Returns:
+            dict with decision info
+        """
+        try:
+            result = self.client.request_grant(url, reason, minutes)
+            if result:
+                return result
+            return {'decision': 'deny', 'stage': 'error', 'reason': 'Failed to request grant', 'granted_minutes': 0, 'expires_at': None}
+        except PermissionError as e:
+            return {'decision': 'deny', 'stage': 'locked', 'reason': str(e), 'granted_minutes': 0, 'expires_at': None}
+
+    def list_grants(self) -> dict:
+        """List active grants.
+
+        Returns:
+            dict with active grants and rate limit info
+        """
+        result = self.client.list_grants()
+        if result:
+            return result
+        return {'active': [], 'rate_limit_remaining': 0}
+
+    def request_breakglass(self) -> dict:
+        """Trigger the break-glass emergency access flow.
+
+        Returns:
+            dict with break-glass state
+        """
+        result = self.client.request_breakglass()
+        if result:
+            return result
+        return {'state': 'idle', 'triggered_at': None, 'release_at': None}
+
+    def get_breakglass(self) -> dict:
+        """Get the current break-glass state.
+
+        Returns:
+            dict with break-glass state
+        """
+        result = self.client.get_breakglass()
+        if result:
+            return result
+        return {'state': 'idle', 'triggered_at': None, 'release_at': None}
 
 
 def get_web_dir() -> str:

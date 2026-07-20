@@ -21,6 +21,9 @@ import type {
   WatchdogUpdateResponse,
   SettingsLockStatus,
   SettingsLockResponse,
+  GrantDecision,
+  GrantsList,
+  BreakglassStatus,
 } from '../types';
 
 // Wait for pywebview to be ready
@@ -159,6 +162,26 @@ export const api = {
   async updateShutdownPrevention(enabled: boolean): Promise<ShutdownPreventionUpdateResponse> {
     await waitForPywebview();
     return window.pywebview.api.update_shutdown_prevention(enabled);
+  },
+
+  async requestGrant(url: string, reason: string, minutes: number): Promise<GrantDecision> {
+    await waitForPywebview();
+    return window.pywebview.api.request_grant(url, reason, minutes);
+  },
+
+  async listGrants(): Promise<GrantsList> {
+    await waitForPywebview();
+    return window.pywebview.api.list_grants();
+  },
+
+  async requestBreakglass(): Promise<BreakglassStatus> {
+    await waitForPywebview();
+    return window.pywebview.api.request_breakglass();
+  },
+
+  async getBreakglass(): Promise<BreakglassStatus> {
+    await waitForPywebview();
+    return window.pywebview.api.get_breakglass();
   },
 };
 

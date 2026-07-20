@@ -65,12 +65,33 @@ Watchdogs require **shutdown prevention** to be enabled:
 | `daemon/api/routes/settings.py` | `/api/settings/watchdog` — enable/disable, count |
 | `daemon/main.py` | Spawns watchdogs on daemon startup when enabled |
 
+## Relationship to the root enforcer (root layout)
+
+Once the root-owned migration is installed (see
+[`documentation/ROOT_MIGRATION_DESIGN.md`](../documentation/ROOT_MIGRATION_DESIGN.md)),
+the `hyprblocker-enforcer` **system** service — `Restart=always`, only stoppable with
+sudo — supersedes this user-space mesh. It does the kill-resistance job properly instead
+of relying on obfuscation.
+
+The mesh is **not** deleted, though: it stays as a *fallback*. `daemon/enforcer_link.py`
+gates the mesh on *observed enforcer liveness* (a fresh `secure/enforcer_state.json`
+snapshot for the current boot), not merely on the layout. So if the root enforcer fails to
+start after the first reboot, the daemon still spawns the mesh and protection never
+silently regresses. Under the pre-migration **user layout**, the mesh behaves exactly as
+documented above.
+
 ## Known Bypasses
 
 Documented deliberately — see the Limitations section in the [README](../README.md):
 
 - `pkill -9 python` kills daemon and watchdogs together (they're all Python processes).
+  *(Closed under the root layout: the enforcer runs as root and re-kills browsers /
+  restarts the daemon; stopping it needs sudo.)*
 - `systemctl --user disable hyprblocker` prevents restart after the next reboot.
-- Booting into a recovery environment sidesteps everything.
+  *(Closed under the root layout: the unit is root-owned in `/etc/systemd/user`, and the
+  daemon + enforcer delete user-dir shadow units.)*
+- Booting into a recovery environment sidesteps everything. *(Remains — the physical
+  backstop, acceptable by design.)*
 
-These are acceptable within the threat model: each requires a deliberate, multi-step action rather than a single impulsive click.
+These are acceptable within the threat model: each requires a deliberate, multi-step action
+rather than a single impulsive click.

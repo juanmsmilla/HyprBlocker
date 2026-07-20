@@ -5,6 +5,8 @@ import logging
 import os
 from dataclasses import dataclass, field
 
+from daemon import paths
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,9 +78,8 @@ class Config:
 
 def get_config_path() -> str:
     """Get the path to the configuration file."""
-    config_dir = os.path.expanduser("~/.config/hyprblocker")
-    os.makedirs(config_dir, exist_ok=True)
-    return os.path.join(config_dir, "config.json")
+    paths.ensure_dir(paths.config_dir())
+    return str(paths.config_path())
 
 
 def load_config() -> Config:

@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Blocks } from './pages/Blocks';
 import { Statistics } from './pages/Statistics';
 import { Browsers } from './pages/Browsers';
+import { Grants } from './pages/Grants';
 import { Settings } from './pages/Settings';
 
 function PageRouter() {
@@ -20,6 +21,8 @@ function PageRouter() {
       return <Statistics />;
     case 'browsers':
       return <Browsers />;
+    case 'grants':
+      return <Grants />;
     case 'settings':
       return <Settings />;
     default:

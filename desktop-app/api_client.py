@@ -31,6 +31,13 @@ class DaemonStatus:
     active_blocks: int
     browsers_detected: int
     browsers_compliant: int
+    layout: str = "user"
+    enforcement_tier: str = "user"
+    dev_mode: bool = False
+    enforcer_down: bool = False
+    settings_locked: bool = False
+    lock_until: str | None = None
+    active_grants: int = 0
 
 
 @dataclass
@@ -585,3 +592,73 @@ class DaemonClient:
                 raise Exception(f"Failed to unlock settings: {response.text}")
         except requests.RequestException as e:
             raise Exception(f"Request failed: {str(e)}") from e
+
+    def request_grant(self, url: str, reason: str, minutes: int) -> dict | None:
+        """Request a temporary access grant for a URL.
+
+        Args:
+            url: URL to request access to
+            reason: Reason for the request
+            minutes: Requested duration in minutes
+
+        Returns:
+            Dict with decision info (decision, stage, reason, granted_minutes,
+            expires_at) or None if unreachable
+
+        Raises:
+            PermissionError: If the request is refused during a lock period
+        """
+        try:
+            data = {'url': url, 'reason': reason, 'minutes': minutes}
+            response = self._request('POST', '/api/grants/request', json=data)
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 403:
+                raise PermissionError("Grants cannot be requested during lock period")
+        except requests.RequestException:
+            pass
+        return None
+
+    def list_grants(self) -> dict | None:
+        """List active grants.
+
+        Returns:
+            Dict with 'active' list and 'rate_limit_remaining' or None if unreachable
+        """
+        try:
+            response = self._request('GET', '/api/grants')
+            if response.status_code == 200:
+                return response.json()
+        except requests.RequestException:
+            pass
+        return None
+
+    def request_breakglass(self) -> dict | None:
+        """Trigger the break-glass emergency access flow.
+
+        Returns:
+            Dict with break-glass state (state, triggered_at, release_at)
+            or None if unreachable
+        """
+        try:
+            response = self._request('POST', '/api/grants/breakglass')
+            if response.status_code == 200:
+                return response.json()
+        except requests.RequestException:
+            pass
+        return None
+
+    def get_breakglass(self) -> dict | None:
+        """Get the current break-glass state.
+
+        Returns:
+            Dict with break-glass state (state, triggered_at, release_at)
+            or None if unreachable
+        """
+        try:
+            response = self._request('GET', '/api/grants/breakglass')
+            if response.status_code == 200:
+                return response.json()
+        except requests.RequestException:
+            pass
+        return None

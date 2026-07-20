@@ -1,7 +1,6 @@
 """Database models and setup for the website blocker daemon."""
 
 import logging
-import os
 from datetime import datetime
 
 from sqlalchemy import (
@@ -121,9 +120,10 @@ class HeartbeatLog(Base):
 
 def get_database_path() -> str:
     """Get the path to the SQLite database file."""
-    config_dir = os.path.expanduser("~/.config/hyprblocker")
-    os.makedirs(config_dir, exist_ok=True)
-    return os.path.join(config_dir, "blocker.db")
+    from daemon import paths
+
+    paths.ensure_dir(paths.user_dir())
+    return str(paths.database_path())
 
 
 def get_database_url() -> str:

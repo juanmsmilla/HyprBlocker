@@ -233,6 +233,18 @@ journalctl --user -u hyprblocker -n 50 --no-pager          # recent daemon logs
 
 The threat model is *impulsive* bypass, not adversarial admin access. The watchdog mesh, obfuscated process names, and NTP-verified locks are there to make cheating take long enough that the impulse passes. For genuinely adversarial scenarios you'd want network-level blocking or a separate restricted user account.
 
+### Root-owned architecture (optional, opt-in)
+
+An optional two-tier, root-owned deployment collapses the user-space bypasses above
+(editable unit/code/state/manifests) into a single gate — typing the sudo password — by
+moving the code, state, and enforcement into root-owned locations with a small root
+enforcer service, and adds an AI-brokered scoped-grant system for least-privilege
+exceptions. It is **not active until you deliberately install it** (`sudo ./install-root.sh`).
+See [`documentation/ROOT_MIGRATION_DESIGN.md`](documentation/ROOT_MIGRATION_DESIGN.md) and
+[`documentation/ROOT_INSTALL.md`](documentation/ROOT_INSTALL.md). sudo remains the
+deliberate ceiling by design — that is the escape hatch and the residual bypass, and they
+are the same action.
+
 ## License
 
 [MIT](LICENSE)

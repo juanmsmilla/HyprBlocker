@@ -8,7 +8,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-const PAGES: Page[] = ['dashboard', 'blocks', 'stats', 'browsers', 'settings'];
+const PAGES: Page[] = ['dashboard', 'blocks', 'stats', 'browsers', 'grants', 'settings'];
 
 // Initial page can be set via URL hash (e.g. #stats), handy for dev deep-links
 function initialPage(): Page {
