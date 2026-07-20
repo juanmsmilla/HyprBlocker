@@ -441,6 +441,24 @@ def _validate_enforcement_json(text: str) -> list[str]:
     return []
 
 
+def _check_judge_key() -> list[str]:
+    """The tier-1 judge key must be readable from user/.env (R2: never in /opt).
+
+    Missing key is a WARN, not a FAIL: the blocker enforces fine without it,
+    but every grant request will instantly fail-closed deny.
+    """
+    dotenv = STATE_DIR / "user" / ".env"
+    if not dotenv.is_file():
+        return [WARN + f"{dotenv} missing — tier-1 grant requests will fail-closed deny"]
+    try:
+        text = dotenv.read_text()
+    except OSError as e:
+        return [WARN + f"{dotenv} unreadable ({e}) — grant requests will fail-closed deny"]
+    if "OPENROUTER_API_KEY" not in text:
+        return [WARN + f"{dotenv} has no OPENROUTER_API_KEY — grant requests will fail-closed deny"]
+    return []
+
+
 def _check_extension_key() -> list[str]:
     """The pinned ``"key"`` in extension/manifest.json must survive the rsync.
 
@@ -494,6 +512,7 @@ def run_checks(
     record("group membership", _check_group(user))
     record(f"venv ({VENV_PYTHON})", _check_venv(run))
     record("extension manifest 'key' pin", _check_extension_key())
+    record("tier-1 judge key (user/.env)", _check_judge_key())
 
     record(
         f"unit {ETC_USER_UNIT}",

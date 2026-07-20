@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useStatus } from "../context/StatusContext";
 import { useToast } from "../context/ToastContext";
 import { Card } from "../components/ui/Card";
-import { Checkbox, Select, Input } from "../components/ui/FormElements";
+import { Checkbox, Select, Input, Textarea } from "../components/ui/FormElements";
 import { Button } from "../components/ui/Button";
 import { api } from "../lib/api";
 import type {
@@ -11,6 +11,7 @@ import type {
   ShutdownPreventionStatus,
   WatchdogStatus,
   SettingsLockStatus,
+  JudgePolicyStatus,
 } from "../types";
 
 type DurationUnit = 'minute' | 'hour' | 'day' | 'month';
@@ -33,6 +34,12 @@ export function Settings() {
   const [settingsLock, setSettingsLock] = useState<SettingsLockStatus | null>(
     null,
   );
+  const [judgePolicy, setJudgePolicy] = useState<JudgePolicyStatus | null>(
+    null,
+  );
+  // null = untouched (mirror the loaded policy); a string = user has edits.
+  const [policyDraft, setPolicyDraft] = useState<string | null>(null);
+  const [savingPolicy, setSavingPolicy] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [lockDurationValue, setLockDurationValue] = useState(1);
   const [lockDurationUnit, setLockDurationUnit] = useState<DurationUnit>('hour');
@@ -64,7 +71,7 @@ export function Settings() {
         await loadBrowserEnforcementStatus();
       } else if (result.settingsLocked) {
         showToast(
-          "Settings are locked and cannot be changed",
+          "Settings are locked — protections cannot be disabled",
           "warning",
         );
         await loadBrowserEnforcementStatus();
@@ -106,7 +113,7 @@ export function Settings() {
         await loadSafeSearchStatus();
       } else if (result.settingsLocked) {
         showToast(
-          "Settings are locked and cannot be changed",
+          "Settings are locked — protections cannot be disabled",
           "warning",
         );
         await loadSafeSearchStatus();
@@ -150,7 +157,7 @@ export function Settings() {
           await loadWatchdogStatus();
         }
       } else if (result.settingsLocked) {
-        showToast("Settings are locked and cannot be changed", "warning");
+        showToast("Settings are locked — protections cannot be disabled", "warning");
       } else {
         showToast(result.error || "Failed to update setting", "error");
       }
@@ -180,6 +187,15 @@ export function Settings() {
     }
   }, []);
 
+  const loadJudgePolicy = useCallback(async () => {
+    try {
+      const policy = await api.getJudgePolicy();
+      setJudgePolicy(policy);
+    } catch (error) {
+      console.error("Failed to load judge policy:", error);
+    }
+  }, []);
+
   // Load all settings on mount
   useEffect(() => {
     loadBrowserEnforcementStatus();
@@ -187,13 +203,46 @@ export function Settings() {
     loadShutdownPreventionStatus();
     loadWatchdogStatus();
     loadSettingsLock();
+    loadJudgePolicy();
   }, [
     loadBrowserEnforcementStatus,
     loadSafeSearchStatus,
     loadShutdownPreventionStatus,
     loadWatchdogStatus,
     loadSettingsLock,
+    loadJudgePolicy,
   ]);
+
+  const handleSaveJudgePolicy = async () => {
+    const text = policyDraft ?? judgePolicy?.text ?? "";
+    setSavingPolicy(true);
+    try {
+      const result = await api.setJudgePolicy(text);
+      if (result.success) {
+        if (result.pending) {
+          showToast(
+            "Loosening change scheduled — it applies after the safety delay",
+            "warning",
+          );
+        } else {
+          showToast("Judge policy saved", "success");
+        }
+        await loadJudgePolicy();
+      } else if (result.settingsLocked) {
+        showToast(
+          "Settings are locked — only switching to a stricter preset is allowed",
+          "warning",
+        );
+      } else {
+        showToast(result.error || "Failed to update judge policy", "error");
+      }
+    } catch (error) {
+      console.error("Failed to update judge policy:", error);
+      showToast("Failed to update judge policy", "error");
+    } finally {
+      setSavingPolicy(false);
+    }
+  };
 
   const handleWatchdogToggle = async (enabled: boolean) => {
     setUpdating(true);
@@ -209,7 +258,7 @@ export function Settings() {
         );
         await loadWatchdogStatus();
       } else if (result.settingsLocked) {
-        showToast("Settings are locked and cannot be changed", "warning");
+        showToast("Settings are locked — protections cannot be disabled", "warning");
       } else {
         showToast(result.error || "Failed to update watchdog", "error");
       }
@@ -230,7 +279,7 @@ export function Settings() {
         showToast(`Watchdog count set to ${count}`, "success");
         await loadWatchdogStatus();
       } else if (result.settingsLocked) {
-        showToast("Settings are locked and cannot be changed", "warning");
+        showToast("Settings are locked — protections cannot be disabled", "warning");
       } else {
         showToast(result.error || "Failed to update watchdog count", "error");
       }
@@ -358,7 +407,7 @@ export function Settings() {
               label="Enable browser enforcement"
               checked={browserEnforcementStatus?.enabled ?? true}
               onChange={(e) => handleBrowserEnforcementToggle(e.target.checked)}
-              disabled={updating || isSettingsLocked}
+              disabled={updating || (isSettingsLocked && (browserEnforcementStatus?.enabled ?? true))}
             />
             <p className="text-xs text-text-secondary mt-2">
               When enabled, browsers without the extension installed will be closed.
@@ -366,7 +415,7 @@ export function Settings() {
             </p>
             {isSettingsLocked && (
               <p className="text-xs text-yellow-500 mt-2">
-                Settings are locked and cannot be changed.
+                Settings are locked — protections can be enabled but not disabled.
               </p>
             )}
           </div>
@@ -378,7 +427,7 @@ export function Settings() {
               label="Enforce safe search on search engines"
               checked={safeSearchStatus?.enabled ?? false}
               onChange={(e) => handleSafeSearchToggle(e.target.checked)}
-              disabled={updating || isSettingsLocked}
+              disabled={updating || (isSettingsLocked && (safeSearchStatus?.enabled ?? false))}
             />
             <p className="text-xs text-text-secondary mt-2">
               Forces Google, Bing, and DuckDuckGo to use strict safe search mode.
@@ -386,7 +435,7 @@ export function Settings() {
             </p>
             {isSettingsLocked && (
               <p className="text-xs text-yellow-500 mt-2">
-                Settings are locked and cannot be changed.
+                Settings are locked — protections can be enabled but not disabled.
               </p>
             )}
           </div>
@@ -411,7 +460,7 @@ export function Settings() {
               label="Shutdown Prevention"
               checked={shutdownPreventionStatus?.enabled ?? false}
               onChange={(e) => handleShutdownPreventionToggle(e.target.checked)}
-              disabled={updating || isSettingsLocked}
+              disabled={updating || (isSettingsLocked && (shutdownPreventionStatus?.enabled ?? false))}
             />
             <p className="text-xs text-text-secondary mt-2 mb-4">
               Prevents the daemon from being stopped via SIGTERM signals.
@@ -421,7 +470,7 @@ export function Settings() {
               label="Watchdog Protection"
               checked={watchdogStatus?.enabled ?? false}
               onChange={(e) => handleWatchdogToggle(e.target.checked)}
-              disabled={updating || isSettingsLocked || !(shutdownPreventionStatus?.enabled)}
+              disabled={updating || (isSettingsLocked && (watchdogStatus?.enabled ?? false)) || !(shutdownPreventionStatus?.enabled)}
             />
             <p className="text-xs text-text-secondary mt-2">
               Spawns monitor processes that restart the daemon if killed.
@@ -442,12 +491,17 @@ export function Settings() {
                   onChange={(e) =>
                     handleWatchdogCountChange(Number(e.target.value))
                   }
-                  disabled={updating || isSettingsLocked}
+                  disabled={updating}
                 >
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
+                  {[2, 3, 4, 5].map((n) => (
+                    <option
+                      key={n}
+                      value={String(n)}
+                      disabled={isSettingsLocked && n < (watchdogStatus?.count ?? 3)}
+                    >
+                      {n}
+                    </option>
+                  ))}
                 </Select>
 
                 {watchdogStatus?.activeWatchdogs &&
@@ -469,8 +523,91 @@ export function Settings() {
 
             {isSettingsLocked && (
               <p className="text-xs text-yellow-500 mt-2">
-                Settings are locked and cannot be changed.
+                Settings are locked — protections can be enabled but not disabled.
               </p>
+            )}
+          </div>
+        </Card>
+
+        <Card title="Grant Judge Policy">
+          <div className="py-3">
+            <p className="text-sm text-text-secondary mb-3">
+              The policy the AI judge follows when deciding access-grant
+              requests. Pick a preset or write your own; switching to a
+              stricter preset applies immediately, anything else counts as
+              loosening and applies after a safety delay.
+            </p>
+            <p className="text-sm mb-3">
+              Active:{" "}
+              <span className="font-medium">
+                {judgePolicy?.preset
+                  ? `${judgePolicy.preset} preset`
+                  : "custom policy"}
+              </span>
+            </p>
+            {judgePolicy?.pendingText != null && (
+              <p className="text-xs text-yellow-500 mb-3">
+                A loosening edit is scheduled
+                {judgePolicy.pendingEffectiveAt
+                  ? ` — applies ${new Date(judgePolicy.pendingEffectiveAt).toLocaleString()}`
+                  : ""}
+                .
+              </p>
+            )}
+            <div className="flex gap-2 mb-3">
+              {Object.entries(judgePolicy?.presets ?? {}).map(([name, text]) => (
+                <Button
+                  key={name}
+                  variant="secondary"
+                  disabled={savingPolicy}
+                  onClick={() => setPolicyDraft(text)}
+                >
+                  {name.charAt(0).toUpperCase() + name.slice(1)}
+                </Button>
+              ))}
+            </div>
+            <Textarea
+              rows={12}
+              className="font-mono text-xs"
+              value={policyDraft ?? judgePolicy?.text ?? ""}
+              maxLength={judgePolicy?.maxChars || undefined}
+              onChange={(e) => setPolicyDraft(e.target.value)}
+              disabled={savingPolicy}
+            />
+            <div className="flex items-center gap-3 mt-3">
+              <Button
+                onClick={handleSaveJudgePolicy}
+                disabled={
+                  savingPolicy ||
+                  policyDraft === null ||
+                  policyDraft === judgePolicy?.text
+                }
+                variant="primary"
+              >
+                {savingPolicy ? "Saving…" : "Save Policy"}
+              </Button>
+              {policyDraft !== null && policyDraft !== judgePolicy?.text && (
+                <Button
+                  variant="secondary"
+                  disabled={savingPolicy}
+                  onClick={() => setPolicyDraft(null)}
+                >
+                  Discard
+                </Button>
+              )}
+            </div>
+            {judgePolicy?.devMode ? (
+              <p className="text-xs text-text-secondary mt-2">
+                Dev mode — policy edits apply immediately, even while settings
+                are locked.
+              </p>
+            ) : (
+              isSettingsLocked && (
+                <p className="text-xs text-yellow-500 mt-2">
+                  Settings are locked — only switching to a stricter preset
+                  will be accepted.
+                </p>
+              )
             )}
           </div>
         </Card>

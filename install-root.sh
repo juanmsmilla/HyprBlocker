@@ -171,6 +171,16 @@ for f in config.json blocker.db blocker.db-wal blocker.db-shm; do
 done
 [[ -f "$STATE_DIR/config.json" ]] || echo "    WARNING: no config.json found at $SRC_DIR — root tier will boot with defaults"
 
+# Tier-1 judge key (R2): never in world-readable /opt — the user daemon reads
+# it from its own state dir (user/.env). Seed it from the repo .env when present.
+if [[ -f "$REPO_DIR/.env" ]]; then
+    install -d -o "$TARGET_USER" -g "$TARGET_USER" -m 0755 "$STATE_DIR/user"
+    install -o "$TARGET_USER" -g "$TARGET_USER" -m 0600 "$REPO_DIR/.env" "$STATE_DIR/user/.env"
+    echo "    seeded tier-1 judge key -> $STATE_DIR/user/.env (0600 $TARGET_USER)"
+else
+    echo "    WARNING: no .env at $REPO_DIR — tier-1 grant requests will fail-closed deny"
+fi
+
 say "Seeding secure/lock.json + secure/enforcement.json from the copied config"
 HYPRBLOCKER_LAYOUT=root "$VENV_PY" -I - <<'PY'
 """Seed the root tier's authoritative files from the just-copied config.json.

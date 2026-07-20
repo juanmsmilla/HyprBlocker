@@ -139,8 +139,10 @@ def load_user_tier_config(
     """Build a config for the TIER-1 (user daemon) judge only.
 
     Resolution order: explicit ``env`` mapping (or ``os.environ``), then a
-    ``.env`` file at the repo/code root. Raises :class:`OpenRouterError` when
-    no key is found — the caller denies.
+    ``.env`` in the user config dir (root layout: ``/var/lib/hyprblocker/user``,
+    seeded by ``install-root.sh`` — the key must never land in world-readable
+    ``/opt``, R2), then the repo/code-root ``.env`` (dev checkout). Raises
+    :class:`OpenRouterError` when no key is found — the caller denies.
 
     NEVER use this for the tier-3/root path; see the module docstring (R2).
     """
@@ -150,13 +152,20 @@ def load_user_tier_config(
     key = env.get("OPENROUTER_API_KEY", "")
     model = env.get("OPENROUTER_MODEL", "")
     if not key:
-        dotenv = dotenv_path or paths.code_root() / ".env"
-        try:
-            values = _parse_dotenv(dotenv.read_text(encoding="utf-8"))
-        except OSError:
-            values = {}
-        key = values.get("OPENROUTER_API_KEY", "")
-        model = model or values.get("OPENROUTER_MODEL", "")
+        candidates = (
+            [dotenv_path]
+            if dotenv_path is not None
+            else [paths.config_dir() / ".env", paths.code_root() / ".env"]
+        )
+        for dotenv in candidates:
+            try:
+                values = _parse_dotenv(dotenv.read_text(encoding="utf-8"))
+            except OSError:
+                continue
+            if values.get("OPENROUTER_API_KEY"):
+                key = values["OPENROUTER_API_KEY"]
+                model = model or values.get("OPENROUTER_MODEL", "")
+                break
     if not key:
         raise OpenRouterError("OPENROUTER_API_KEY not configured (env or .env)")
     return OpenRouterConfig(api_key=key, model=model or DEFAULT_MODEL)

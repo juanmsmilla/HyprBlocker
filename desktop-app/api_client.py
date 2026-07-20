@@ -1,6 +1,6 @@
 """API client for communicating with the Website Blocker daemon."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import requests
 
@@ -156,7 +156,10 @@ class DaemonClient:
             response = self._request('GET', '/api/status')
             if response.status_code == 200:
                 data = response.json()
-                return DaemonStatus(**data)
+                # Ignore fields this build doesn't know about — a newer daemon
+                # must never make an older app render "Daemon not running".
+                known = {f.name for f in fields(DaemonStatus)}
+                return DaemonStatus(**{k: v for k, v in data.items() if k in known})
         except requests.RequestException:
             pass
         return None
@@ -593,6 +596,49 @@ class DaemonClient:
         except requests.RequestException as e:
             raise Exception(f"Request failed: {str(e)}") from e
 
+    def get_judge_policy(self) -> dict | None:
+        """Get the grant-judge policy status.
+
+        Returns:
+            Dict with text, preset, presets, max_chars, locked, pending_text,
+            pending_effective_at — or None if unreachable
+        """
+        try:
+            response = self._request('GET', '/api/settings/judge-policy')
+            if response.status_code == 200:
+                return response.json()
+        except requests.RequestException:
+            pass
+        return None
+
+    def set_judge_policy(self, text: str) -> dict:
+        """Replace the grant-judge policy document.
+
+        Args:
+            text: New policy document text
+
+        Returns:
+            Dict with success/pending/reason
+
+        Raises:
+            PermissionError: If rejected because settings are locked
+        """
+        try:
+            response = self._request('PUT', '/api/settings/judge-policy', json={'text': text})
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 403:
+                raise PermissionError(
+                    "Settings are locked — only switching to a stricter preset is allowed"
+                )
+            try:
+                detail = response.json().get('detail', response.text)
+            except ValueError:
+                detail = response.text
+            raise Exception(f"Failed to update judge policy: {detail}")
+        except requests.RequestException as e:
+            raise Exception(f"Request failed: {str(e)}") from e
+
     def request_grant(self, url: str, reason: str, minutes: int) -> dict | None:
         """Request a temporary access grant for a URL.
 
@@ -610,7 +656,10 @@ class DaemonClient:
         """
         try:
             data = {'url': url, 'reason': reason, 'minutes': minutes}
-            response = self._request('POST', '/api/grants/request', json=data)
+            # The daemon blocks on the LLM judge before answering — worst case
+            # 2 OpenRouter attempts x 30s. The default 5s timeout hangs up
+            # mid-judge and turns a real verdict into a generic failure.
+            response = self._request('POST', '/api/grants/request', json=data, timeout=75)
             if response.status_code == 200:
                 return response.json()
             elif response.status_code == 403:

@@ -241,6 +241,8 @@ async def lifespan(app):
     # any state (re-sync live user state that changed between install and reboot,
     # then delete the user-dir shadow unit so /etc/systemd/user wins). Guarded so
     # it is a no-op in the user layout. Must run BEFORE the DB is opened (R9).
+    # main() already ran this before the first config read; repeating here is
+    # idempotent (copy2 preserves mtimes) and covers non-main() entrypoints.
     _root_layout_startup()
 
     config = get_config()
@@ -328,6 +330,12 @@ app.router.lifespan_context = lifespan
 def main():
     """Main entry point."""
     global _server
+
+    # R9: reconcile root-layout state BEFORE the first config read. get_config()
+    # creates a defaults file when none exists, and that fresh file would
+    # mtime-beat the legacy config the re-sync is supposed to carry over —
+    # silently booting the daemon with default (weakest) security settings.
+    _root_layout_startup()
 
     config = get_config()
 

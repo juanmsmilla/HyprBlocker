@@ -43,6 +43,20 @@ def build_lock_request(locked_until: str | None) -> dict:
     }
 
 
+def build_judge_policy_request(text: str) -> dict:
+    """A request to replace the grant-judge policy document (``secure/policy.md``).
+
+    The enforcer classifies it with :func:`daemon.grants.policy.classify_policy_edit`
+    (preset tightening applies immediately; anything else is delayed loosening).
+    """
+    return {
+        "type": "judge_policy",
+        "text": text,
+        "requested_at": datetime.now(UTC).isoformat(),
+        "id": uuid.uuid4().hex,
+    }
+
+
 def drop_request(payload: dict) -> Path:
     """Write a request JSON file for the enforcer to consume. Returns its path."""
     d = settings_requests_dir()

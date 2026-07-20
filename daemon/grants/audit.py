@@ -106,11 +106,17 @@ def append_entry(entry: dict[str, Any], path: Path | None = None) -> None:
     entry = dict(entry)
     entry.setdefault("ts", datetime.now(UTC).isoformat())
     line = json.dumps(entry, ensure_ascii=False, default=str) + "\n"
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, _LOG_MODE)
     try:
-        os.write(fd, line.encode("utf-8"))
-    finally:
-        os.close(fd)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, _LOG_MODE)
+        try:
+            os.write(fd, line.encode("utf-8"))
+        finally:
+            os.close(fd)
+    except OSError as e:
+        # Audit is transparency, not enforcement — an unwritable log must not
+        # take down the grant pipeline (it 500'd every request when this path
+        # briefly pointed into root-owned secure/).
+        logger.error("Cannot append grant audit entry to %s: %s", path, e)
 
 
 def read_entries(path: Path | None = None) -> list[dict[str, Any]]:

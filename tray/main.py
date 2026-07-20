@@ -10,7 +10,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import pystray
 import requests
@@ -61,7 +61,10 @@ class DaemonClient:
             )
             if response.status_code == 200:
                 data = response.json()
-                return DaemonStatus(**data)
+                # Ignore fields this build doesn't know about — a newer daemon
+                # must never break the tray's status line.
+                known = {f.name for f in fields(DaemonStatus)}
+                return DaemonStatus(**{k: v for k, v in data.items() if k in known})
         except requests.RequestException:
             pass
         return None

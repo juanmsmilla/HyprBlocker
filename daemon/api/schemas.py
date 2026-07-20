@@ -225,3 +225,18 @@ class SettingsLockResponse(BaseModel):
 
 class SettingsLockRequest(BaseModel):
     lock_until: str  # ISO datetime
+
+
+class JudgePolicyResponse(BaseModel):
+    text: str  # the active policy document (strict preset when no file exists)
+    preset: str | None  # which shipped preset the active text is, else None
+    presets: dict[str, str]  # {name: full text} for the UI's preset picker
+    max_chars: int
+    locked: bool
+    dev_mode: bool  # pre-graduation: edits apply immediately, lock or not
+    pending_text: str | None  # a scheduled (delayed loosening) edit, if any
+    pending_effective_at: str | None  # ISO datetime the pending edit applies
+
+
+class JudgePolicyUpdateRequest(BaseModel):
+    text: str

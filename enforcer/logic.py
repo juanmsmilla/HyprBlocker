@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from daemon.enforcement_policy import EnforcementPolicy
+from daemon.grants import policy as grant_policy
 
 # Loosening changes (shorter lock, weaker policy) are delayed by this many hours
 # before they apply (spec: 24-48h). Tightening changes always apply immediately.
@@ -215,6 +216,8 @@ def classify_request(
     request: dict,
     current_lock_until: datetime | None,
     current_policy: EnforcementPolicy,
+    current_judge_policy: str | None = None,
+    dev_mode: bool = False,
 ) -> RequestVerdict:
     """Classify a parsed request file. Malformed requests are rejected (error set).
 
@@ -222,6 +225,13 @@ def classify_request(
 
     - ``{"type": "lock", "locked_until": "<ISO datetime>" | null}``
     - ``{"type": "policy", "policy": {<EnforcementPolicy fields>}}``
+    - ``{"type": "judge_policy", "text": "<policy.md contents>"}``
+
+    ``current_judge_policy`` is the active grant-judge policy text; ``None``
+    means no custom policy file exists, i.e. the strict preset is in effect.
+    ``dev_mode`` (pre-graduation) applies any *valid* judge-policy edit
+    immediately — the delay exists to bind future-you, not to slow development.
+    It does not touch lock or enforcement-policy requests.
     """
     kind = request.get("type")
     if kind == "lock":
@@ -249,5 +259,23 @@ def classify_request(
         loosened = _policy_loosening_fields(current_policy, requested_policy)
         action = ChangeAction.DELAY if loosened else ChangeAction.APPLY_NOW
         return RequestVerdict(action, "policy", loosened_fields=loosened)
+
+    if kind == "judge_policy":
+        text = request.get("text")
+        if not isinstance(text, str):
+            return RequestVerdict(ChangeAction.DELAY, "judge_policy", error="missing policy text")
+        errors = grant_policy.validate_policy_text(text)
+        if errors:
+            return RequestVerdict(ChangeAction.DELAY, "judge_policy", error="; ".join(errors))
+        if dev_mode:
+            return RequestVerdict(ChangeAction.APPLY_NOW, "judge_policy")
+        current = (
+            current_judge_policy
+            if current_judge_policy is not None
+            else grant_policy.default_policy_text()
+        )
+        decision = grant_policy.classify_policy_edit(current, text)
+        action = ChangeAction.APPLY_NOW if decision.apply_immediately else ChangeAction.DELAY
+        return RequestVerdict(action, "judge_policy")
 
     return RequestVerdict(ChangeAction.DELAY, str(kind), error=f"unknown request type: {kind!r}")

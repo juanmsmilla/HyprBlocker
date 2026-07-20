@@ -459,6 +459,51 @@ class API:
                 'error': str(e)
             }
 
+    def get_judge_policy(self) -> dict:
+        """Get the grant-judge policy status.
+
+        Returns:
+            dict with policy text, active preset, available presets, and lock info
+        """
+        result = self.client.get_judge_policy()
+        if result:
+            return {
+                'text': result.get('text', ''),
+                'preset': result.get('preset'),
+                'presets': result.get('presets', {}),
+                'maxChars': result.get('max_chars', 0),
+                'locked': result.get('locked', False),
+                'devMode': result.get('dev_mode', False),
+                'pendingText': result.get('pending_text'),
+                'pendingEffectiveAt': result.get('pending_effective_at'),
+            }
+        return {
+            'text': '', 'preset': None, 'presets': {}, 'maxChars': 0,
+            'locked': False, 'devMode': False, 'pendingText': None,
+            'pendingEffectiveAt': None,
+        }
+
+    def set_judge_policy(self, text: str) -> dict:
+        """Replace the grant-judge policy document.
+
+        Args:
+            text: New policy document text
+
+        Returns:
+            dict with success status
+        """
+        try:
+            result = self.client.set_judge_policy(text)
+            return {
+                'success': True,
+                'pending': result.get('pending', False),
+                'reason': result.get('reason'),
+            }
+        except PermissionError as e:
+            return {'success': False, 'settingsLocked': True, 'error': str(e)}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
     def request_grant(self, url: str, reason: str, minutes: int) -> dict:
         """Request a temporary access grant for a URL.
 

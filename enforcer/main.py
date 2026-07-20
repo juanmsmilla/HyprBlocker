@@ -46,6 +46,7 @@ from pathlib import Path
 
 from daemon import paths, service_enforcer, settings_lock
 from daemon.enforcement_policy import EnforcementPolicy, load_policy, write_policy
+from daemon.grants import policy as grant_policy
 from enforcer import heartbeat, logic, proc_scan
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,13 @@ class Enforcer:
             current = asdict(load_policy())
             current.update(body)
             write_policy(EnforcementPolicy(**current))
+        elif request.get("type") == "judge_policy":
+            # Re-validate at apply time — a matured pending entry must not land
+            # an invalid document (the judge would silently fall back to strict,
+            # but the file would misrepresent the active policy).
+            text = request.get("text")
+            if isinstance(text, str) and not grant_policy.validate_policy_text(text):
+                _atomic_write(paths.policy_path(), text)
 
     def _process_settings_requests(self, policy: EnforcementPolicy) -> None:
         req_dir = _settings_requests_dir()
@@ -181,6 +189,8 @@ class Enforcer:
         if not files:
             return
         current_lock = settings_lock.read_lock_until()
+        current_judge_policy = grant_policy.load_policy_text()
+        dev_mode = paths.is_dev_mode()
         for f in files:
             try:
                 request = json.loads(f.read_text())
@@ -188,7 +198,13 @@ class Enforcer:
                 logger.error("Dropping unreadable request %s", f)
                 f.unlink(missing_ok=True)
                 continue
-            verdict = logic.classify_request(request, current_lock, policy)
+            verdict = logic.classify_request(
+                request,
+                current_lock,
+                policy,
+                current_judge_policy=current_judge_policy,
+                dev_mode=dev_mode,
+            )
             if verdict.error:
                 logger.warning("Rejecting request %s: %s", f.name, verdict.error)
             elif verdict.action is logic.ChangeAction.APPLY_NOW:

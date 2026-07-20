@@ -201,18 +201,25 @@ def policy_path() -> Path:
 
 
 def grants_log_path() -> Path:
-    """Append-only grant audit log (world-readable)."""
-    return secure_dir() / "grants.log"
+    """Append-only tier-1 grant audit log (world-readable).
+
+    Lives in the user-writable dir: tier 1 runs entirely in the user daemon
+    ("tier 1 needs no root"), and nothing root-side ever writes grant entries —
+    a ``secure/`` location would make every grant request die on
+    ``PermissionError`` in the root layout. In the user layout ``user_dir``
+    collapses onto ``state_dir``, unchanged from before."""
+    return user_dir() / "grants.log"
 
 
 def grants_active_path() -> Path:
     """Active tier-1 grant store, overlaid onto blocks at read time (review M6).
 
-    Root layout: ``secure/grants_active.json`` — root-owned and world-readable so
-    the enforcer is the authoritative writer and a forged grant cannot loosen a
-    locked block. User/dev layout: collapses onto ``secure_dir`` (== state_dir),
-    written by the user daemon (matching the "tier 1 needs no root" intent)."""
-    return secure_dir() / "grants_active.json"
+    User-writable like the audit log above — the writer is the user daemon in
+    both layouts. This is consistent with the tier-1 trust model: the overlay
+    only widens the user's own block rules, which live in the equally
+    user-writable ``blocker.db``; root-tier enforcement (browser kill, lock,
+    enforcement.json) never reads this file."""
+    return user_dir() / "grants_active.json"
 
 
 def breakglass_path() -> Path:

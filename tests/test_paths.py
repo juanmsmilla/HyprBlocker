@@ -59,10 +59,22 @@ def test_secure_file_accessors(monkeypatch, tmp_path):
     monkeypatch.setenv("HYPRBLOCKER_SECURE_DIR", str(tmp_path))
     assert paths.lock_path() == tmp_path / "lock.json"
     assert paths.policy_path() == tmp_path / "policy.md"
-    assert paths.grants_log_path() == tmp_path / "grants.log"
     assert paths.breakglass_path() == tmp_path / "breakglass.json"
     assert paths.enforcer_state_path() == tmp_path / "enforcer_state.json"
     assert paths.root_credential_path() == tmp_path / "root_credential"
+
+
+def test_tier1_grant_files_are_user_writable_in_root_layout(monkeypatch):
+    # Regression: these lived in secure/ (root-write-only), so every tier-1
+    # grant request 500'd on PermissionError in the root layout. Tier 1 runs
+    # entirely in the user daemon and its files must live in user/.
+    monkeypatch.setenv("HYPRBLOCKER_LAYOUT", "root")
+    for v in ("HYPRBLOCKER_STATE_DIR", "HYPRBLOCKER_CONFIG_DIR", "HYPRBLOCKER_SECURE_DIR"):
+        monkeypatch.delenv(v, raising=False)
+    assert paths.grants_log_path() == paths.Path("/var/lib/hyprblocker/user/grants.log")
+    assert paths.grants_active_path() == paths.Path(
+        "/var/lib/hyprblocker/user/grants_active.json"
+    )
 
 
 def test_ensure_dir_creates(tmp_path):

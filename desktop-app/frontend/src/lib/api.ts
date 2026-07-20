@@ -21,6 +21,8 @@ import type {
   WatchdogUpdateResponse,
   SettingsLockStatus,
   SettingsLockResponse,
+  JudgePolicyStatus,
+  JudgePolicyUpdateResponse,
   GrantDecision,
   GrantsList,
   BreakglassStatus,
@@ -152,6 +154,16 @@ export const api = {
   async unlockSettings(): Promise<SettingsLockResponse> {
     await waitForPywebview();
     return window.pywebview.api.unlock_settings();
+  },
+
+  async getJudgePolicy(): Promise<JudgePolicyStatus> {
+    await waitForPywebview();
+    return window.pywebview.api.get_judge_policy();
+  },
+
+  async setJudgePolicy(text: string): Promise<JudgePolicyUpdateResponse> {
+    await waitForPywebview();
+    return window.pywebview.api.set_judge_policy(text);
   },
 
   async getShutdownPreventionStatus(): Promise<ShutdownPreventionStatus> {

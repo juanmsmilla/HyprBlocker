@@ -33,3 +33,10 @@ def test_drop_request_atomic_no_tmp_left(monkeypatch, tmp_path):
     requests_bridge.drop_request(requests_bridge.build_lock_request(None))
     leftovers = list((paths.requests_dir() / "settings").glob("*.tmp"))
     assert leftovers == []
+
+
+def test_build_judge_policy_request():
+    req = requests_bridge.build_judge_policy_request("# My policy\nDeny everything.")
+    assert req["type"] == "judge_policy"
+    assert req["text"] == "# My policy\nDeny everything."
+    assert "id" in req and "requested_at" in req

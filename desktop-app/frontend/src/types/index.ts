@@ -204,6 +204,25 @@ export interface SettingsLockResponse {
   stillLocked?: boolean;
 }
 
+export interface JudgePolicyStatus {
+  text: string;
+  preset: string | null;
+  presets: Record<string, string>;
+  maxChars: number;
+  locked: boolean;
+  devMode: boolean;
+  pendingText: string | null;
+  pendingEffectiveAt: string | null;
+}
+
+export interface JudgePolicyUpdateResponse {
+  success: boolean;
+  pending?: boolean;
+  reason?: string;
+  settingsLocked?: boolean;
+  error?: string;
+}
+
 // Grants
 export interface GrantDecision {
   decision: 'allow' | 'deny';
@@ -277,6 +296,8 @@ declare global {
         get_settings_lock(): Promise<SettingsLockStatus>;
         lock_settings(lock_until: string): Promise<SettingsLockResponse>;
         unlock_settings(): Promise<SettingsLockResponse>;
+        get_judge_policy(): Promise<JudgePolicyStatus>;
+        set_judge_policy(text: string): Promise<JudgePolicyUpdateResponse>;
         request_grant(url: string, reason: string, minutes: number): Promise<GrantDecision>;
         list_grants(): Promise<GrantsList>;
         request_breakglass(): Promise<BreakglassStatus>;
