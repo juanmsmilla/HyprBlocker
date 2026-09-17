@@ -23,6 +23,9 @@ from ..schemas import (
     ShutdownPreventionUpdateRequest,
     WatchdogStatusResponse,
     WatchdogUpdateRequest,
+    UnblockDelayStatusResponse,
+    UnblockDelayUpdateRequest,
+    UnblockDelayLogResponse,
 )
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -508,3 +511,109 @@ async def unlock_settings():
     logger.info("Settings lock cleared")
 
     return {"success": True}
+
+
+# Unblock delay (prototype)
+@router.get("/unblock-delay", response_model=UnblockDelayStatusResponse)
+async def get_unblock_delay_status():
+    """Get cancelable delay-before-unblock settings."""
+    from daemon import pending_unblock
+
+    config = get_config()
+    return UnblockDelayStatusResponse(
+        enabled=config.security.unblock_delay_enabled,
+        minutes=config.security.unblock_delay_minutes,
+        pending_count=len(pending_unblock.list_pending()),
+    )
+
+
+@router.get("/unblock-delay/log", response_model=UnblockDelayLogResponse)
+async def get_unblock_delay_log(limit: int = 100):
+    """Recent human-readable delay events (also at ~/.config/hyprblocker/unblock_delay.log)."""
+    from daemon import pending_unblock
+
+    return UnblockDelayLogResponse(
+        path=str(pending_unblock.log_path()),
+        lines=pending_unblock.read_event_log(limit),
+    )
+
+
+@router.put("/unblock-delay")
+async def update_unblock_delay_settings(request: UnblockDelayUpdateRequest):
+    """Update delay-before-unblock toggle and minutes.
+
+    Tightening (enable, or raise minutes) applies immediately.
+    Loosening (disable, or lower minutes) is itself delayed when delay is on —
+    cancelable; a new request restarts the full wait.
+    """
+    from fastapi import Response
+
+    from daemon import pending_unblock
+    from daemon.api.schemas import PendingUnblockQueuedResponse
+
+    config = get_config()
+    enabled_now, minutes_now = pending_unblock.delay_settings()
+
+    if request.minutes is not None:
+        if request.minutes < 1 or request.minutes > 24 * 60:
+            raise HTTPException(status_code=400, detail="minutes must be between 1 and 1440")
+
+    payload: dict = {}
+    if request.enabled is not None and request.enabled != config.security.unblock_delay_enabled:
+        payload["enabled"] = request.enabled
+    if request.minutes is not None and request.minutes != config.security.unblock_delay_minutes:
+        payload["minutes"] = request.minutes
+
+    if not payload:
+        return {
+            "success": True,
+            "enabled": config.security.unblock_delay_enabled,
+            "minutes": config.security.unblock_delay_minutes,
+            "pending_count": len(pending_unblock.list_pending()),
+        }
+
+    # Classify: loosening if disabling or reducing minutes
+    loosening = False
+    if "enabled" in payload and payload["enabled"] is False and enabled_now:
+        loosening = True
+    if "minutes" in payload and payload["minutes"] < minutes_now:
+        loosening = True
+
+    if enabled_now and loosening:
+        pending = pending_unblock.enqueue_settings_loosen(payload)
+        return {
+            "success": True,
+            "pending": True,
+            "pending_id": pending.id,
+            "kind": pending.kind,
+            "effective_at": pending.effective_at,
+            "delay_minutes": minutes_now,
+            "enabled": config.security.unblock_delay_enabled,
+            "minutes": config.security.unblock_delay_minutes,
+            "pending_count": len(pending_unblock.list_pending()),
+            "message": (
+                f"Delay-settings change queued — applies in {minutes_now} min "
+                "(cancel from pending list). Turning delay off is also delayed."
+            ),
+        }
+
+    # Immediate tightening / changes while delay is off
+    if "minutes" in payload:
+        config.security.unblock_delay_minutes = int(payload["minutes"])
+    if "enabled" in payload:
+        config.security.unblock_delay_enabled = bool(payload["enabled"])
+        if not payload["enabled"]:
+            canceled = pending_unblock.cancel_all()
+            pending_unblock.event_log("disabled_immediately", canceled=canceled)
+
+    save_config(config)
+    reload_config()
+    pending_unblock.event_log("settings_saved_immediate", **payload)
+
+    return {
+        "success": True,
+        "pending": False,
+        "enabled": config.security.unblock_delay_enabled,
+        "minutes": config.security.unblock_delay_minutes,
+        "pending_count": len(pending_unblock.list_pending()),
+    }

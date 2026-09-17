@@ -63,6 +63,19 @@ async def get_all_blocks() -> list[Block]:
         return list(result.scalars().all())
 
 
+
+async def apply_pending_unblocks_job():
+    """Apply due delayed unblock / loosening changes."""
+    from daemon import pending_unblock
+    if _session_factory is None:
+        return
+    try:
+        n = await pending_unblock.apply_due(_session_factory)
+        if n:
+            logger.info("Applied %s delayed unblock change(s)", n)
+    except Exception:
+        logger.exception("pending unblock apply failed")
+
 async def schedule_check_job():
     """Job that runs periodically to check schedules."""
     global _shutdown_prevention_cache
@@ -270,6 +283,14 @@ async def lifespan(app):
         seconds=config.monitoring.schedule_check_interval_seconds,
         id='schedule_check'
     )
+
+    _scheduler.add_job(
+        apply_pending_unblocks_job,
+        'interval',
+        seconds=5,
+        id='pending_unblocks'
+    )
+
 
     # Monitor check job (every 5 seconds)
     _scheduler.add_job(

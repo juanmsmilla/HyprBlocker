@@ -3,14 +3,16 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { parseDaysOfWeek, formatDays, formatDate } from '../../lib/api';
 import { getBlockActivity, formatRuleCount } from '../../lib/blocks';
-import type { Block } from '../../types';
+import type { Block, PendingUnblock } from '../../types';
 
 interface BlocksTableProps {
   blocks: Block[];
+  pendingByBlockId: Map<number, PendingUnblock>;
   onEdit: (block: Block) => void;
   onToggle: (block: Block) => void;
   onDelete: (block: Block) => void;
   onLock: (block: Block) => void;
+  onCancelDelay: (pending: PendingUnblock) => void;
   onAdd: () => void;
 }
 
@@ -65,7 +67,19 @@ function formatLockStatus(block: Block): React.ReactNode {
   );
 }
 
-function formatActivityStatus(block: Block): React.ReactNode {
+function formatActivityStatus(block: Block, pending?: PendingUnblock): React.ReactNode {
+  if (pending) {
+    const mins = Math.max(1, Math.ceil(pending.remaining_seconds / 60));
+    return (
+      <div>
+        <Badge variant="warning">Delay pending</Badge>
+        <div className="text-xs text-text-secondary mt-1">
+          {pending.kind} in ~{mins} min
+        </div>
+      </div>
+    );
+  }
+
   const activity = getBlockActivity(block);
 
   if (activity.state === 'active') {
@@ -82,7 +96,16 @@ function formatActivityStatus(block: Block): React.ReactNode {
   return <Badge variant="default">Off</Badge>;
 }
 
-export function BlocksTable({ blocks, onEdit, onToggle, onDelete, onLock, onAdd }: BlocksTableProps) {
+export function BlocksTable({
+  blocks,
+  pendingByBlockId,
+  onEdit,
+  onToggle,
+  onDelete,
+  onLock,
+  onCancelDelay,
+  onAdd,
+}: BlocksTableProps) {
   if (blocks.length === 0) {
     return (
       <div className="text-center py-10">
@@ -123,36 +146,47 @@ export function BlocksTable({ blocks, onEdit, onToggle, onDelete, onLock, onAdd 
           </tr>
         </thead>
         <tbody>
-          {blocks.map((block) => (
-            <tr key={block.id} className="border-t border-border hover:bg-bg-hover/50">
-              <td className="px-4 py-3 text-text">{block.name}</td>
-              <td className="px-4 py-3">{formatBlockMode(block)}</td>
-              <td className="px-4 py-3">
-                <button
-                  onClick={() => onLock(block)}
-                  className="hover:bg-bg-hover rounded p-1 transition-colors cursor-pointer"
-                  title="Configure lock"
-                >
-                  {formatLockStatus(block)}
-                </button>
-              </td>
-              <td className="px-4 py-3 text-text">{formatRuleCount(block)}</td>
-              <td className="px-4 py-3">{formatActivityStatus(block)}</td>
-              <td className="px-4 py-3">
-                <div className="flex gap-2">
-                  <Button size="small" variant="secondary" onClick={() => onEdit(block)}>
-                    Edit
-                  </Button>
-                  <Button size="small" variant="secondary" onClick={() => onToggle(block)}>
-                    {block.enabled ? 'Disable' : 'Enable'}
-                  </Button>
-                  <Button size="small" variant="danger" onClick={() => onDelete(block)}>
-                    Delete
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {blocks.map((block) => {
+            const pending = pendingByBlockId.get(block.id);
+            return (
+              <tr key={block.id} className="border-t border-border hover:bg-bg-hover/50">
+                <td className="px-4 py-3 text-text">{block.name}</td>
+                <td className="px-4 py-3">{formatBlockMode(block)}</td>
+                <td className="px-4 py-3">
+                  <button
+                    onClick={() => onLock(block)}
+                    className="hover:bg-bg-hover rounded p-1 transition-colors cursor-pointer"
+                    title="Configure lock"
+                  >
+                    {formatLockStatus(block)}
+                  </button>
+                </td>
+                <td className="px-4 py-3 text-text">{formatRuleCount(block)}</td>
+                <td className="px-4 py-3">{formatActivityStatus(block, pending)}</td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-2">
+                    {pending ? (
+                      <Button size="small" variant="danger" onClick={() => onCancelDelay(pending)}>
+                        Cancel delay
+                      </Button>
+                    ) : (
+                      <>
+                        <Button size="small" variant="secondary" onClick={() => onEdit(block)}>
+                          Edit
+                        </Button>
+                        <Button size="small" variant="secondary" onClick={() => onToggle(block)}>
+                          {block.enabled ? 'Disable' : 'Enable'}
+                        </Button>
+                        <Button size="small" variant="danger" onClick={() => onDelete(block)}>
+                          Delete
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

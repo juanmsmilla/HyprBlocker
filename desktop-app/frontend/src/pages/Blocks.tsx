@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useStatus } from '../context/StatusContext';
 import { useToast } from '../context/ToastContext';
@@ -11,7 +11,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PageLoading } from '../components/ui/PageLoading';
 import { api } from '../lib/api';
 import { formatRuleCount } from '../lib/blocks';
-import type { Block } from '../types';
+import type { Block, PendingUnblock } from '../types';
 
 export function Blocks() {
   const { blocks, loading, refreshBlocks } = useStatus();
@@ -23,6 +23,31 @@ export function Blocks() {
   const [isAddRulesModalOpen, setIsAddRulesModalOpen] = useState(false);
   const [addRulesBlock, setAddRulesBlock] = useState<Block | null>(null);
   const [deletingBlock, setDeletingBlock] = useState<Block | null>(null);
+  const [pendingUnblocks, setPendingUnblocks] = useState<PendingUnblock[]>([]);
+
+  const loadPending = useCallback(async () => {
+    try {
+      const pending = await api.getPendingUnblocks();
+      setPendingUnblocks(pending);
+    } catch (error) {
+      console.error('Failed to load pending unblocks:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPending();
+    const id = window.setInterval(loadPending, 5000);
+    return () => window.clearInterval(id);
+  }, [loadPending]);
+
+  const pendingByBlockId = useMemo(() => {
+    const map = new Map<number, PendingUnblock>();
+    for (const p of pendingUnblocks) {
+      if (p.kind === 'settings' || !p.block_id) continue;
+      map.set(p.block_id, p);
+    }
+    return map;
+  }, [pendingUnblocks]);
 
   const handleAddBlock = () => {
     setEditingBlock(null);
@@ -33,7 +58,6 @@ export function Blocks() {
     try {
       const lockStatus = await api.getBlockLockStatus(block.id);
       if (lockStatus.locked) {
-        // Block is locked, open AddRulesModal instead
         setAddRulesBlock(block);
         setIsAddRulesModalOpen(true);
         return;
@@ -57,6 +81,13 @@ export function Blocks() {
 
       const result = await api.updateBlock(block.id, { enabled: !block.enabled });
       if (result.success) {
+        if ((result as { pending?: boolean }).pending) {
+          showToast(
+            (result as { message?: string }).message || 'Change queued — use Cancel delay in Actions',
+            'success',
+          );
+          await loadPending();
+        }
         await refreshBlocks();
       } else {
         showToast(result.error || 'Failed to update block', 'error');
@@ -86,7 +117,15 @@ export function Blocks() {
     try {
       const result = await api.deleteBlock(deletingBlock.id);
       if (result.success) {
-        showToast('Block deleted', 'success');
+        if ((result as { pending?: boolean }).pending) {
+          showToast(
+            (result as { message?: string }).message || 'Delete queued — use Cancel delay in Actions',
+            'success',
+          );
+          await loadPending();
+        } else {
+          showToast('Block deleted', 'success');
+        }
         await refreshBlocks();
       } else {
         showToast(result.error || 'Failed to delete block', 'error');
@@ -96,6 +135,22 @@ export function Blocks() {
       showToast('Failed to delete block', 'error');
     } finally {
       setDeletingBlock(null);
+    }
+  };
+
+  const handleCancelDelay = async (pending: PendingUnblock) => {
+    try {
+      const result = await api.cancelPendingUnblock(pending.id);
+      if (result.success) {
+        showToast('Delay canceled', 'success');
+        await loadPending();
+        await refreshBlocks();
+      } else {
+        showToast(result.error || 'Failed to cancel delay', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to cancel pending:', error);
+      showToast('Failed to cancel delay', 'error');
     }
   };
 
@@ -137,10 +192,12 @@ export function Blocks() {
 
       <BlocksTable
         blocks={blocks}
+        pendingByBlockId={pendingByBlockId}
         onEdit={handleEditBlock}
         onToggle={handleToggleBlock}
         onDelete={handleDeleteBlock}
         onLock={handleLockBlock}
+        onCancelDelay={handleCancelDelay}
         onAdd={handleAddBlock}
       />
 

@@ -240,3 +240,39 @@ class JudgePolicyResponse(BaseModel):
 
 class JudgePolicyUpdateRequest(BaseModel):
     text: str
+
+
+class UnblockDelayStatusResponse(BaseModel):
+    enabled: bool
+    minutes: int
+    pending_count: int = 0
+
+
+class UnblockDelayUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    minutes: int | None = None
+
+
+class PendingUnblockResponse(BaseModel):
+    id: str
+    kind: str
+    block_id: int
+    block_name: str
+    created_at: str
+    effective_at: str
+    remaining_seconds: int
+
+
+class PendingUnblockQueuedResponse(BaseModel):
+    status: str = "pending"
+    pending_id: str
+    kind: str
+    block_id: int
+    block_name: str
+    effective_at: str
+    delay_minutes: int
+
+
+class UnblockDelayLogResponse(BaseModel):
+    path: str
+    lines: list[str]

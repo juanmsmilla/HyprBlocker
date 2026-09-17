@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,15 +11,52 @@ from daemon.lock_manager import get_lock_manager
 from daemon.time_verifier import get_time_verifier
 
 from ..deps import check_block_lock, get_session
+from daemon import pending_unblock
+
 from ..schemas import (
     BlockCreate,
     BlockLockExtendRequest,
     BlockResponse,
     BlockStrictUpdate,
     BlockUpdate,
+    PendingUnblockQueuedResponse,
 )
 
 router = APIRouter(prefix="/api", tags=["blocks"])
+
+
+def _rules_set(rules: str | None) -> set[str]:
+    if not rules:
+        return set()
+    return {r.strip() for r in rules.split("\n") if r.strip()}
+
+
+def _is_loosening_update(db_block, block: BlockUpdate) -> bool:
+    """True if this update weakens the block (candidate for delay)."""
+    if block.enabled is False and db_block.enabled:
+        return True
+    if block.block_mode == "disabled" and db_block.block_mode != "disabled":
+        return True
+    if block.lock_mode == "none" and db_block.lock_mode != "none":
+        return True
+    if block.websites_blocked is not None:
+        if not _rules_set(block.websites_blocked).issuperset(_rules_set(db_block.websites_blocked)):
+            return True
+    if block.apps_blocked is not None:
+        if not _rules_set(block.apps_blocked).issuperset(_rules_set(db_block.apps_blocked)):
+            return True
+    if block.websites_allowed is not None:
+        if not _rules_set(db_block.websites_allowed).issuperset(_rules_set(block.websites_allowed)):
+            # allowed list grew => loosening
+            if _rules_set(block.websites_allowed) - _rules_set(db_block.websites_allowed):
+                return True
+    return False
+
+
+def _update_payload(block: BlockUpdate) -> dict:
+    data = block.model_dump(exclude_unset=True)
+    return data
+
 
 
 @router.get("/blocks", response_model=list[BlockResponse])
@@ -67,13 +104,14 @@ async def create_block(block: BlockCreate, session: AsyncSession = Depends(get_s
     return BlockResponse(**db_block.to_dict())
 
 
-@router.put("/blocks/{block_id}", response_model=BlockResponse)
+@router.put("/blocks/{block_id}")
 async def update_block(
     block_id: int,
     block: BlockUpdate,
+    response: Response,
     session: AsyncSession = Depends(get_session)
 ):
-    """Update a block."""
+    """Update a block. Loosening changes may be delayed when unblock-delay is on."""
     await check_block_lock(block_id)
 
     result = await session.execute(select(Block).where(Block.id == block_id))
@@ -81,6 +119,24 @@ async def update_block(
 
     if db_block is None:
         raise HTTPException(status_code=404, detail="Block not found")
+
+    enabled, minutes = pending_unblock.delay_settings()
+    if enabled and _is_loosening_update(db_block, block):
+        pending = pending_unblock.enqueue(
+            kind="update",
+            block_id=db_block.id,
+            block_name=db_block.name,
+            payload=_update_payload(block),
+        )
+        response.status_code = 202
+        return PendingUnblockQueuedResponse(
+            pending_id=pending.id,
+            kind=pending.kind,
+            block_id=pending.block_id,
+            block_name=pending.block_name,
+            effective_at=pending.effective_at,
+            delay_minutes=minutes,
+        )
 
     if block.name is not None:
         db_block.name = block.name
@@ -144,8 +200,12 @@ async def update_block(
 
 
 @router.delete("/blocks/{block_id}")
-async def delete_block(block_id: int, session: AsyncSession = Depends(get_session)):
-    """Delete a block."""
+async def delete_block(
+    block_id: int,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+):
+    """Delete a block. May be delayed when unblock-delay is on."""
     await check_block_lock(block_id)
 
     result = await session.execute(select(Block).where(Block.id == block_id))
@@ -153,6 +213,23 @@ async def delete_block(block_id: int, session: AsyncSession = Depends(get_sessio
 
     if db_block is None:
         raise HTTPException(status_code=404, detail="Block not found")
+
+    enabled, minutes = pending_unblock.delay_settings()
+    if enabled:
+        pending = pending_unblock.enqueue(
+            kind="delete",
+            block_id=db_block.id,
+            block_name=db_block.name,
+        )
+        response.status_code = 202
+        return PendingUnblockQueuedResponse(
+            pending_id=pending.id,
+            kind=pending.kind,
+            block_id=pending.block_id,
+            block_name=pending.block_name,
+            effective_at=pending.effective_at,
+            delay_minutes=minutes,
+        )
 
     await session.delete(db_block)
     await session.commit()

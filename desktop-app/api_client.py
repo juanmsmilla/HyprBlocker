@@ -85,6 +85,13 @@ class SafeSearchStatus:
 
 
 @dataclass
+class UnblockDelayStatus:
+    enabled: bool
+    minutes: int
+    pending_count: int = 0
+
+
+@dataclass
 class ShutdownPreventionStatus:
     """Represents shutdown prevention status."""
     enabled: bool
@@ -229,6 +236,8 @@ class DaemonClient:
 
             if response.status_code == 200:
                 return Block(**response.json())
+            elif response.status_code == 202:
+                return response.json()  # pending queued
             elif response.status_code == 403:
                 raise PermissionError("Cannot modify blocks during lock period")
             else:
@@ -239,19 +248,14 @@ class DaemonClient:
             traceback.print_exc()
         return None
 
-    def delete_block(self, block_id: int) -> bool:
-        """Delete a block.
-
-        Args:
-            block_id: Block ID to delete
-
-        Returns:
-            True if deleted successfully
-        """
+    def delete_block(self, block_id: int):
+        """Delete a block. Returns True, pending dict (202), or False."""
         try:
             response = self._request('DELETE', f'/api/blocks/{block_id}')
             if response.status_code == 200:
                 return True
+            elif response.status_code == 202:
+                return response.json()
             elif response.status_code == 403:
                 raise PermissionError("Cannot modify blocks during lock period")
         except requests.RequestException:
@@ -497,6 +501,51 @@ class DaemonClient:
                 raise Exception(f"Failed to update shutdown prevention: {response.text}")
         except requests.RequestException as e:
             raise Exception(f"Request failed: {str(e)}") from e
+
+
+    def get_unblock_delay_status(self) -> UnblockDelayStatus | None:
+        try:
+            response = self._request('GET', '/api/settings/unblock-delay')
+            if response.status_code == 200:
+                data = response.json()
+                return UnblockDelayStatus(
+                    enabled=data.get('enabled', False),
+                    minutes=data.get('minutes', 10),
+                    pending_count=data.get('pending_count', 0),
+                )
+        except requests.RequestException:
+            pass
+        return None
+
+    def update_unblock_delay(self, enabled: bool | None = None, minutes: int | None = None) -> dict:
+        body = {}
+        if enabled is not None:
+            body['enabled'] = enabled
+        if minutes is not None:
+            body['minutes'] = minutes
+        response = self._request('PUT', '/api/settings/unblock-delay', json=body)
+        if response.status_code in (200, 202):
+            return response.json()
+        raise Exception(f"Failed to update unblock delay: {response.text}")
+
+    def get_unblock_delay_log(self, limit: int = 80) -> dict:
+        response = self._request('GET', f'/api/settings/unblock-delay/log?limit={limit}')
+        if response.status_code == 200:
+            return response.json()
+        return {'path': '', 'lines': []}
+
+    def get_pending_unblocks(self) -> list[dict]:
+        try:
+            response = self._request('GET', '/api/pending-unblocks')
+            if response.status_code == 200:
+                return response.json()
+        except requests.RequestException:
+            pass
+        return []
+
+    def cancel_pending_unblock(self, pending_id: str) -> bool:
+        response = self._request('DELETE', f'/api/pending-unblocks/{pending_id}')
+        return response.status_code == 200
 
     def get_watchdog_status(self) -> WatchdogStatus | None:
         """Get watchdog status.

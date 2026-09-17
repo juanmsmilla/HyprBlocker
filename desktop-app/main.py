@@ -6,9 +6,12 @@ import os
 import subprocess
 import sys
 
+import logging
 import webview
 from api_client import DaemonClient
 
+
+logger = logging.getLogger("hyprblocker.desktop")
 
 class API:
     """JavaScript API exposed to the webview."""
@@ -84,6 +87,15 @@ class API:
 
             print(f"[PyWebView Bridge] api_client returned: {block}")
 
+            if isinstance(block, dict) and block.get('status') == 'pending':
+                return {
+                    'success': True,
+                    'pending': True,
+                    'pendingId': block.get('pending_id'),
+                    'effectiveAt': block.get('effective_at'),
+                    'delayMinutes': block.get('delay_minutes'),
+                    'message': f"Change queued — applies in {block.get('delay_minutes')} min (cancel from Settings)",
+                }
             if block:
                 return {'success': True}
             return {'success': False, 'error': 'Failed to update block'}
@@ -99,8 +111,18 @@ class API:
     def delete_block(self, block_id: int) -> dict:
         """Delete a block."""
         try:
-            if self.client.delete_block(block_id):
+            result = self.client.delete_block(block_id)
+            if result is True:
                 return {'success': True}
+            if isinstance(result, dict) and result.get('status') == 'pending':
+                return {
+                    'success': True,
+                    'pending': True,
+                    'pendingId': result.get('pending_id'),
+                    'effectiveAt': result.get('effective_at'),
+                    'delayMinutes': result.get('delay_minutes'),
+                    'message': f"Delete queued — applies in {result.get('delay_minutes')} min (cancel from Settings)",
+                }
             return {'success': False, 'error': 'Failed to delete block'}
         except PermissionError as e:
             return {'success': False, 'error': str(e), 'locked': True}
@@ -314,6 +336,57 @@ class API:
                 'success': False,
                 'error': str(e)
             }
+
+
+    def get_unblock_delay_status(self) -> dict:
+        try:
+            status = self.client.get_unblock_delay_status()
+            if status:
+                return {
+                    'enabled': status.enabled,
+                    'minutes': status.minutes,
+                    'pendingCount': status.pending_count,
+                }
+            logger.warning('[unblock-delay] get_unblock_delay_status: daemon returned None')
+            return {'enabled': False, 'minutes': 10, 'pendingCount': 0, 'error': 'Failed to get status'}
+        except Exception as e:
+            logger.exception('[unblock-delay] get_unblock_delay_status failed')
+            return {'enabled': False, 'minutes': 10, 'pendingCount': 0, 'error': str(e)}
+
+    def update_unblock_delay(self, enabled=None, minutes=None) -> dict:
+        try:
+            result = self.client.update_unblock_delay(enabled=enabled, minutes=minutes)
+            return {
+                'success': True,
+                'enabled': result.get('enabled'),
+                'minutes': result.get('minutes'),
+                'pendingCount': result.get('pending_count', 0),
+                'pending': bool(result.get('pending')),
+                'message': result.get('message'),
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def get_unblock_delay_log(self, limit: int = 80) -> dict:
+        try:
+            return self.client.get_unblock_delay_log(limit)
+        except Exception as e:
+            logger.exception('[unblock-delay] get_unblock_delay_log failed')
+            return {'path': '', 'lines': [], 'error': str(e)}
+
+    def get_pending_unblocks(self) -> list:
+        try:
+            return self.client.get_pending_unblocks()
+        except Exception:
+            logger.exception('[unblock-delay] get_pending_unblocks failed')
+            return []
+
+    def cancel_pending_unblock(self, pending_id: str) -> dict:
+        try:
+            ok = self.client.cancel_pending_unblock(pending_id)
+            return {'success': bool(ok)}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
 
     def get_shutdown_prevention_status(self) -> dict:
         """Get shutdown prevention status.

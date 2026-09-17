@@ -12,6 +12,9 @@ import type {
   WatchdogStatus,
   SettingsLockStatus,
   JudgePolicyStatus,
+  UnblockDelayStatus,
+  UnblockDelayLog,
+  PendingUnblock,
 } from "../types";
 
 type DurationUnit = 'minute' | 'hour' | 'day' | 'month';
@@ -37,6 +40,11 @@ export function Settings() {
   const [judgePolicy, setJudgePolicy] = useState<JudgePolicyStatus | null>(
     null,
   );
+  const [unblockDelayStatus, setUnblockDelayStatus] = useState<UnblockDelayStatus | null>(null);
+  const [pendingUnblocks, setPendingUnblocks] = useState<PendingUnblock[]>([]);
+  const [delayMinutesDraft, setDelayMinutesDraft] = useState(10);
+  const [delayLog, setDelayLog] = useState<UnblockDelayLog | null>(null);
+
   // null = untouched (mirror the loaded policy); a string = user has edits.
   const [policyDraft, setPolicyDraft] = useState<string | null>(null);
   const [savingPolicy, setSavingPolicy] = useState(false);
@@ -130,6 +138,120 @@ export function Settings() {
     }
   };
 
+
+  const loadUnblockDelayStatus = useCallback(async () => {
+    const stepErrors: string[] = [];
+    try {
+      const status = await api.getUnblockDelayStatus();
+      setUnblockDelayStatus(status);
+      setDelayMinutesDraft(status.minutes ?? 10);
+      if (status.error) {
+        stepErrors.push(`status: ${status.error}`);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("[unblock-delay] status load failed:", error);
+      stepErrors.push(`status: ${msg}`);
+    }
+    try {
+      const pending = await api.getPendingUnblocks();
+      setPendingUnblocks(pending);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("[unblock-delay] pending load failed:", error);
+      stepErrors.push(`pending: ${msg}`);
+    }
+    try {
+      const log = await api.getUnblockDelayLog(80);
+      setDelayLog(log);
+      if (log && (log as { error?: string }).error) {
+        stepErrors.push(`log: ${(log as { error?: string }).error}`);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("[unblock-delay] log load failed:", error);
+      stepErrors.push(`log: ${msg}`);
+    }
+    if (stepErrors.length > 0) {
+      console.error("[unblock-delay] load errors:", stepErrors);
+      showToast(`Failed to load delay settings (${stepErrors.join("; ")})`, "error");
+    }
+  }, [showToast]);
+
+  const handleUnblockDelayToggle = async (enabled: boolean) => {
+    setUpdating(true);
+    try {
+      const result = await api.updateUnblockDelay(enabled, undefined);
+      if (result.success) {
+        if (result.pending) {
+          showToast(result.message || "Delay-settings change queued — cancel from list below", "success");
+        } else {
+          showToast(
+            enabled
+              ? `Unblock delay enabled (${result.minutes ?? delayMinutesDraft} min)`
+              : "Unblock delay disabled",
+            "success",
+          );
+        }
+        await loadUnblockDelayStatus();
+      } else {
+        showToast(result.error || "Failed to update delay setting", "error");
+        await loadUnblockDelayStatus();
+      }
+    } catch (error) {
+      console.error("Failed to update unblock delay:", error);
+      showToast("Failed to update delay setting", "error");
+      await loadUnblockDelayStatus();
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleUnblockDelayMinutesSave = async () => {
+    const minutes = Number(delayMinutesDraft);
+    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
+      showToast("Minutes must be between 1 and 1440", "warning");
+      return;
+    }
+    setUpdating(true);
+    try {
+      const result = await api.updateUnblockDelay(undefined, minutes);
+      if (result.success) {
+        if (result.pending) {
+          showToast(result.message || "Shorter delay queued — cancel from list below", "success");
+        } else {
+          showToast(`Delay set to ${minutes} minutes`, "success");
+        }
+        await loadUnblockDelayStatus();
+      } else {
+        showToast(result.error || "Failed to update minutes", "error");
+      }
+    } catch (error) {
+      console.error("Failed to update delay minutes:", error);
+      showToast("Failed to update minutes", "error");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleCancelPending = async (pendingId: string) => {
+    setUpdating(true);
+    try {
+      const result = await api.cancelPendingUnblock(pendingId);
+      if (result.success) {
+        showToast("Pending unblock canceled — timer reset if you try again", "success");
+        await loadUnblockDelayStatus();
+      } else {
+        showToast(result.error || "Failed to cancel", "error");
+      }
+    } catch (error) {
+      console.error("Failed to cancel pending:", error);
+      showToast("Failed to cancel", "error");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const loadShutdownPreventionStatus = useCallback(async () => {
     try {
       const status = await api.getShutdownPreventionStatus();
@@ -200,6 +322,7 @@ export function Settings() {
   useEffect(() => {
     loadBrowserEnforcementStatus();
     loadSafeSearchStatus();
+    loadUnblockDelayStatus();
     loadShutdownPreventionStatus();
     loadWatchdogStatus();
     loadSettingsLock();
@@ -207,6 +330,7 @@ export function Settings() {
   }, [
     loadBrowserEnforcementStatus,
     loadSafeSearchStatus,
+    loadUnblockDelayStatus,
     loadShutdownPreventionStatus,
     loadWatchdogStatus,
     loadSettingsLock,
@@ -438,6 +562,93 @@ export function Settings() {
                 Settings are locked — protections can be enabled but not disabled.
               </p>
             )}
+          </div>
+        </Card>
+
+
+        <Card title="Unblock Delay (prototype)">
+          <div className="py-3">
+            <Checkbox
+              label="Delay deletes and loosening changes"
+              checked={unblockDelayStatus?.enabled ?? false}
+              onChange={(e) => handleUnblockDelayToggle(e.target.checked)}
+              disabled={updating}
+            />
+            <p className="text-xs text-text-secondary mt-2 mb-4">
+              When enabled, deleting a block or weakening its rules waits N minutes
+              before applying. Cancel anytime during the wait to abort — requesting
+              again restarts the full timer.
+            </p>
+
+            <label className="block text-sm text-text-secondary mb-2">
+              Delay (minutes)
+            </label>
+            <div className="flex gap-2 items-center">
+              <Input
+                type="number"
+                min={1}
+                max={1440}
+                value={String(delayMinutesDraft)}
+                onChange={(e) => setDelayMinutesDraft(Number(e.target.value))}
+                disabled={updating || !(unblockDelayStatus?.enabled)}
+                className="w-28"
+              />
+              <Button
+                size="small"
+                onClick={handleUnblockDelayMinutesSave}
+                disabled={updating || !(unblockDelayStatus?.enabled)}
+              >
+                Save
+              </Button>
+            </div>
+
+            {pendingUnblocks.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-medium text-text">Pending changes</p>
+                {pendingUnblocks.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex justify-between items-center gap-3 text-sm border border-border rounded px-3 py-2"
+                  >
+                    <div>
+                      <span className="text-text">{p.kind}</span>{" "}
+                      <span className="text-text-secondary">{p.block_name}</span>
+                      <div className="text-xs text-text-secondary">
+                        applies in {Math.ceil(p.remaining_seconds / 60)} min
+                        {" "}({p.remaining_seconds}s)
+                      </div>
+                    </div>
+                    <Button
+                      size="small"
+                      variant="danger"
+                      onClick={() => handleCancelPending(p.id)}
+                      disabled={updating}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-5">
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-sm font-medium text-text">Delay log</p>
+                <Button
+                  size="small"
+                  onClick={() => loadUnblockDelayStatus()}
+                  disabled={updating}
+                >
+                  Refresh
+                </Button>
+              </div>
+              <p className="text-xs text-text-secondary mb-2">
+                File: {delayLog?.path ?? "~/.config/hyprblocker/unblock_delay.log"}
+              </p>
+              <pre className="text-xs text-text-secondary bg-bg-secondary border border-border rounded p-3 max-h-48 overflow-auto whitespace-pre-wrap">
+                {(delayLog?.lines?.length ? delayLog.lines : ["(no events yet)"]).join("\n")}
+              </pre>
+            </div>
           </div>
         </Card>
 

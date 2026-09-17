@@ -170,6 +170,41 @@ export interface ShutdownPreventionUpdateResponse {
   settingsLocked?: boolean;
 }
 
+
+// Unblock delay (prototype)
+export interface UnblockDelayStatus {
+  enabled: boolean;
+  minutes: number;
+  pendingCount: number;
+  error?: string;
+}
+
+export interface UnblockDelayUpdateResponse {
+  success: boolean;
+  enabled?: boolean;
+  minutes?: number;
+  pendingCount?: number;
+  pending?: boolean;
+  message?: string;
+  error?: string;
+}
+
+export interface UnblockDelayLog {
+  path: string;
+  lines: string[];
+  error?: string;
+}
+
+export interface PendingUnblock {
+  id: string;
+  kind: string;
+  block_id: number;
+  block_name: string;
+  created_at: string;
+  effective_at: string;
+  remaining_seconds: number;
+}
+
 // Watchdog status
 export interface WatchdogStatus {
   enabled: boolean;
@@ -288,6 +323,11 @@ declare global {
         get_browser_enforcement_status(): Promise<BrowserEnforcementStatus>;
         update_browser_enforcement(enabled: boolean): Promise<BrowserEnforcementUpdateResponse>;
         get_safe_search_status(): Promise<SafeSearchStatus>;
+        get_unblock_delay_status(): Promise<UnblockDelayStatus>;
+        update_unblock_delay(enabled?: boolean, minutes?: number): Promise<UnblockDelayUpdateResponse>;
+        get_unblock_delay_log(limit?: number): Promise<UnblockDelayLog>;
+        get_pending_unblocks(): Promise<PendingUnblock[]>;
+        cancel_pending_unblock(pendingId: string): Promise<{ success: boolean; error?: string }>;
         update_safe_search(enabled: boolean): Promise<SafeSearchUpdateResponse>;
         get_shutdown_prevention_status(): Promise<ShutdownPreventionStatus>;
         update_shutdown_prevention(enabled: boolean): Promise<ShutdownPreventionUpdateResponse>;

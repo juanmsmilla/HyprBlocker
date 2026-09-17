@@ -53,6 +53,9 @@ class SecurityConfig:
     settings_lock_until: str | None = (
         None  # ISO datetime string when settings lock expires
     )
+    # Prototype: delay deletes / loosening updates; cancelable from UI
+    unblock_delay_enabled: bool = False
+    unblock_delay_minutes: int = 10
 
 
 @dataclass
@@ -150,6 +153,8 @@ def save_config(config: Config) -> None:
             "watchdog_enabled": config.security.watchdog_enabled,
             "watchdog_count": config.security.watchdog_count,
             "settings_lock_until": config.security.settings_lock_until,
+            "unblock_delay_enabled": config.security.unblock_delay_enabled,
+            "unblock_delay_minutes": config.security.unblock_delay_minutes,
         },
         "browsers": config.browsers,
     }

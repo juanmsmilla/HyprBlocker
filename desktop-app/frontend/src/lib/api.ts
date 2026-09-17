@@ -15,6 +15,10 @@ import type {
   BrowserEnforcementUpdateResponse,
   SafeSearchStatus,
   SafeSearchUpdateResponse,
+  UnblockDelayStatus,
+  UnblockDelayUpdateResponse,
+  UnblockDelayLog,
+  PendingUnblock,
   ShutdownPreventionStatus,
   ShutdownPreventionUpdateResponse,
   WatchdogStatus,
@@ -129,6 +133,31 @@ export const api = {
   async updateSafeSearch(enabled: boolean): Promise<SafeSearchUpdateResponse> {
     await waitForPywebview();
     return window.pywebview.api.update_safe_search(enabled);
+  },
+
+  async getUnblockDelayStatus(): Promise<UnblockDelayStatus> {
+    await waitForPywebview();
+    return window.pywebview.api.get_unblock_delay_status();
+  },
+
+  async updateUnblockDelay(enabled?: boolean, minutes?: number): Promise<UnblockDelayUpdateResponse> {
+    await waitForPywebview();
+    return window.pywebview.api.update_unblock_delay(enabled, minutes);
+  },
+
+  async getUnblockDelayLog(limit = 80): Promise<UnblockDelayLog> {
+    await waitForPywebview();
+    return window.pywebview.api.get_unblock_delay_log(limit);
+  },
+
+  async getPendingUnblocks(): Promise<PendingUnblock[]> {
+    await waitForPywebview();
+    return window.pywebview.api.get_pending_unblocks();
+  },
+
+  async cancelPendingUnblock(pendingId: string): Promise<{ success: boolean; error?: string }> {
+    await waitForPywebview();
+    return window.pywebview.api.cancel_pending_unblock(pendingId);
   },
 
   async getWatchdogStatus(): Promise<WatchdogStatus> {
