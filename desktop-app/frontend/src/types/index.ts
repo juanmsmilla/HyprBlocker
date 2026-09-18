@@ -12,6 +12,7 @@ export interface Block {
   created_at: string;
   websites_blocked: string | null;
   websites_allowed: string | null;
+  websites_media_blocked: string | null;
   apps_blocked: string | null;
 }
 
@@ -27,6 +28,7 @@ export interface BlockInput {
   lock_until?: string;
   websites_blocked?: string | null;
   websites_allowed?: string | null;
+  websites_media_blocked?: string | null;
   apps_blocked?: string | null;
 }
 
@@ -124,6 +126,7 @@ export interface LockStatusResponse {
 // Strict update input (for adding rules to locked blocks)
 export interface BlockStrictUpdateInput {
   websites_blocked_add?: string;
+  websites_media_blocked_add?: string;
   apps_blocked_add?: string;
   websites_allowed_remove?: string;
 }

@@ -14,8 +14,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import daemon.time_verifier as time_verifier_module
 from daemon.api import app, set_session_factory
+from daemon.api.routes.blocks import _is_loosening_update
+from daemon.api.schemas import BlockUpdate
 from daemon.database import Base, Block
 from daemon.lock_manager import init_lock_manager
+from tests.conftest import make_block
 
 
 class StubTimeVerifier:
@@ -73,6 +76,7 @@ def block_payload(**overrides):
         "block_mode": "always",
         "websites_blocked": "youtube.com\nreddit.com",
         "websites_allowed": "reddit.com/r/programming",
+        "websites_media_blocked": "twitch.tv",
         "apps_blocked": "steam",
     }
     payload.update(overrides)
@@ -97,6 +101,16 @@ class TestBlockCrud:
         assert block["block_mode"] == "always"
         assert block["lock_mode"] == "none"
         assert block["enabled"] is True
+        assert block["websites_media_blocked"] == "twitch.tv"
+
+    def test_create_media_only_block(self, client):
+        block = create_block(
+            client,
+            websites_blocked="",
+            websites_media_blocked="youtube.com",
+        )
+        assert block["websites_blocked"] == ""
+        assert block["websites_media_blocked"] == "youtube.com"
 
     def test_create_rejects_invalid_block_mode(self, client):
         response = client.post("/api/blocks", json=block_payload(block_mode="sometimes"))
@@ -130,6 +144,18 @@ class TestBlockCrud:
         updated = response.json()
         assert updated["name"] == "Renamed"
         assert updated["websites_blocked"] == "news.ycombinator.com"
+
+    def test_update_media_blocked_list(self, client):
+        block = create_block(client)
+        response = client.put(
+            f"/api/blocks/{block['id']}",
+            json={"websites_media_blocked": "youtube.com\nreddit.com"},
+        )
+        assert response.status_code == 200
+        assert set(response.json()["websites_media_blocked"].split("\n")) == {
+            "youtube.com",
+            "reddit.com",
+        }
 
     def test_update_missing_block_returns_404(self, client):
         response = client.put("/api/blocks/999", json={"name": "Ghost"})
@@ -224,6 +250,16 @@ class TestStrictUpdates:
         )
         assert set(response.json()["apps_blocked"].split("\n")) == {"steam", "lutris"}
 
+    def test_strict_update_adds_media_blocked(self, client):
+        block = create_block(client, lock_mode="locked_until", lock_until=iso_in(2))
+        response = client.patch(
+            f"/api/blocks/{block['id']}/strict",
+            json={"websites_media_blocked_add": "youtube.com"},
+        )
+        assert response.status_code == 200
+        media = response.json()["websites_media_blocked"].split("\n")
+        assert set(media) == {"twitch.tv", "youtube.com"}
+
 
 class TestExtendLock:
     def test_extend_lock_pushes_expiry_later(self, client):
@@ -257,3 +293,15 @@ class TestExtendLock:
             f"/api/blocks/{block['id']}/extend-lock", json={"lock_until": iso_in(5)}
         )
         assert response.status_code == 403
+
+
+class TestMediaListLoosening:
+    def test_shrinking_media_list_is_loosening(self):
+        db = make_block(websites_media_blocked="youtube.com\nreddit.com")
+        update = BlockUpdate(websites_media_blocked="youtube.com")
+        assert _is_loosening_update(db, update)
+
+    def test_growing_media_list_is_not_loosening(self):
+        db = make_block(websites_media_blocked="youtube.com")
+        update = BlockUpdate(websites_media_blocked="youtube.com\nreddit.com")
+        assert not _is_loosening_update(db, update)

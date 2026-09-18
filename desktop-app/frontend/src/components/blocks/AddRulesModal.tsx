@@ -17,6 +17,7 @@ export function AddRulesModal({ isOpen, onClose, block }: AddRulesModalProps) {
   const { showToast } = useToast();
   const { refreshBlocks } = useStatus();
   const [websitesBlockedAdd, setWebsitesBlockedAdd] = useState('');
+  const [websitesMediaBlockedAdd, setWebsitesMediaBlockedAdd] = useState('');
   const [appsBlockedAdd, setAppsBlockedAdd] = useState('');
   const [websitesAllowedRemove, setWebsitesAllowedRemove] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -28,6 +29,7 @@ export function AddRulesModal({ isOpen, onClose, block }: AddRulesModalProps) {
     // Check if any fields have content
     const hasContent =
       websitesBlockedAdd.trim() ||
+      websitesMediaBlockedAdd.trim() ||
       appsBlockedAdd.trim() ||
       websitesAllowedRemove.trim();
 
@@ -44,6 +46,9 @@ export function AddRulesModal({ isOpen, onClose, block }: AddRulesModalProps) {
       if (websitesBlockedAdd.trim()) {
         updates.websites_blocked_add = websitesBlockedAdd.trim();
       }
+      if (websitesMediaBlockedAdd.trim()) {
+        updates.websites_media_blocked_add = websitesMediaBlockedAdd.trim();
+      }
       if (appsBlockedAdd.trim()) {
         updates.apps_blocked_add = appsBlockedAdd.trim();
       }
@@ -58,6 +63,7 @@ export function AddRulesModal({ isOpen, onClose, block }: AddRulesModalProps) {
         await refreshBlocks();
         // Clear fields
         setWebsitesBlockedAdd('');
+        setWebsitesMediaBlockedAdd('');
         setAppsBlockedAdd('');
         setWebsitesAllowedRemove('');
         onClose();
@@ -94,6 +100,18 @@ export function AddRulesModal({ isOpen, onClose, block }: AddRulesModalProps) {
               placeholder="reddit.com&#10;youtube.com/shorts&#10;twitter.com"
               value={websitesBlockedAdd}
               onChange={(e) => setWebsitesBlockedAdd(e.target.value)}
+            />
+          </FormGroup>
+
+          <FormGroup
+            label="Websites to media-block"
+            hint="These will be added to the media-blocked list (page stays available; images/video/audio cancelled)"
+          >
+            <Textarea
+              rows={3}
+              placeholder="youtube.com&#10;reddit.com"
+              value={websitesMediaBlockedAdd}
+              onChange={(e) => setWebsitesMediaBlockedAdd(e.target.value)}
             />
           </FormGroup>
 

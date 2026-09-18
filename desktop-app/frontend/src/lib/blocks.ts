@@ -82,7 +82,11 @@ export function getBlockActivity(block: Block, now: Date = new Date()): BlockAct
 export function countRules(block: Block): number {
   const countLines = (value: string | null) =>
     value ? value.split('\n').filter((line) => line.trim()).length : 0;
-  return countLines(block.websites_blocked) + countLines(block.apps_blocked);
+  return (
+    countLines(block.websites_blocked) +
+    countLines(block.websites_media_blocked) +
+    countLines(block.apps_blocked)
+  );
 }
 
 export function formatRuleCount(block: Block): string {

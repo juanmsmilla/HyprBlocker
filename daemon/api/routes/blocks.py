@@ -6,13 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from daemon import pending_unblock
 from daemon.database import Block
 from daemon.lock_manager import get_lock_manager
 from daemon.time_verifier import get_time_verifier
 
 from ..deps import check_block_lock, get_session
-from daemon import pending_unblock
-
 from ..schemas import (
     BlockCreate,
     BlockLockExtendRequest,
@@ -42,6 +41,11 @@ def _is_loosening_update(db_block, block: BlockUpdate) -> bool:
     if block.websites_blocked is not None:
         if not _rules_set(block.websites_blocked).issuperset(_rules_set(db_block.websites_blocked)):
             return True
+    if block.websites_media_blocked is not None:
+        if not _rules_set(block.websites_media_blocked).issuperset(
+            _rules_set(db_block.websites_media_blocked)
+        ):
+            return True
     if block.apps_blocked is not None:
         if not _rules_set(block.apps_blocked).issuperset(_rules_set(db_block.apps_blocked)):
             return True
@@ -56,7 +60,6 @@ def _is_loosening_update(db_block, block: BlockUpdate) -> bool:
 def _update_payload(block: BlockUpdate) -> dict:
     data = block.model_dump(exclude_unset=True)
     return data
-
 
 
 @router.get("/blocks", response_model=list[BlockResponse])
@@ -94,6 +97,7 @@ async def create_block(block: BlockCreate, session: AsyncSession = Depends(get_s
         lock_until=lock_until,
         websites_blocked=block.websites_blocked,
         websites_allowed=block.websites_allowed,
+        websites_media_blocked=block.websites_media_blocked,
         apps_blocked=block.apps_blocked,
         enabled=block.enabled
     )
@@ -190,6 +194,9 @@ async def update_block(
     if block.websites_allowed is not None:
         db_block.websites_allowed = block.websites_allowed
 
+    if block.websites_media_blocked is not None:
+        db_block.websites_media_blocked = block.websites_media_blocked
+
     if block.apps_blocked is not None:
         db_block.apps_blocked = block.apps_blocked
 
@@ -271,7 +278,7 @@ async def update_block_strict(
 
     This endpoint bypasses lock checks because it can only make the block
     MORE restrictive:
-    - Adding items to blocked lists
+    - Adding items to blocked lists (including media-blocked)
     - Removing items from allowed lists
     """
     result = await session.execute(select(Block).where(Block.id == block_id))
@@ -285,6 +292,12 @@ async def update_block_strict(
         existing = parse_rules_to_set(db_block.websites_blocked)
         to_add = parse_rules_to_set(updates.websites_blocked_add)
         db_block.websites_blocked = set_to_rules(existing | to_add)
+
+    # Add to websites_media_blocked (tightening: more media stripping)
+    if updates.websites_media_blocked_add:
+        existing = parse_rules_to_set(db_block.websites_media_blocked)
+        to_add = parse_rules_to_set(updates.websites_media_blocked_add)
+        db_block.websites_media_blocked = set_to_rules(existing | to_add)
 
     # Add to apps_blocked
     if updates.apps_blocked_add:

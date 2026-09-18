@@ -56,7 +56,17 @@ def test_expired_grant_is_not_overlaid():
     assert out[1]["allowed"] == ["reddit.com/r/python"]
 
 
-def test_overlay_does_not_mutate_input():
+def test_overlay_matches_media_only_blocks():
+    now = datetime.now(UTC)
+    grant = _grant("https://youtube.com", now=now)
+    blocks = [
+        {"id": 1, "name": "media", "blocked": [], "media_blocked": ["youtube.com"], "allowed": []},
+        {"id": 2, "name": "unrelated", "blocked": ["reddit.com"], "media_blocked": [], "allowed": []},
+    ]
+    out = store.overlay_blocks(blocks, [grant], now)
+    assert "youtube.com" in out[0]["allowed"]
+    assert out[1]["allowed"] == []
+    assert out[0]["media_blocked"] == ["youtube.com"]
     now = datetime.now(UTC)
     blocks = _blocks()
     store.overlay_blocks(blocks, [_grant("https://reddit.com", now=now)], now)

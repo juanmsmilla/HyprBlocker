@@ -39,6 +39,7 @@ It's equally honest about what it *can't* stop — see [Limitations](#limitation
 ## Features
 
 - **Website blocking** — domain, subdomain, wildcard (`*.reddit.com`), and path-specific (`youtube.com/shorts`) patterns
+- **Media / resource-type blocking** — keep a site navigable but cancel images, video, and audio (and typical media fetches) on matching pages
 - **Allow-list exceptions** — block all of Reddit except `reddit.com/r/programming`
 - **App blocking** — closes blocked applications via Hyprland IPC (window-class matching)
 - **Scheduling** — always-on or time ranges per weekday (e.g. weekdays 9–5)
@@ -146,11 +147,17 @@ A *block* groups rules together and defines when they're enforced and when confi
 - **Rules** (one per line):
 
 ```
-Blocked Websites          Allowed Websites             Blocked Applications
-reddit.com                reddit.com/r/programming     steam
-youtube.com/shorts        reddit.com/r/linux           discord
+Blocked Websites          Media-blocked websites       Allowed Websites             Blocked Applications
+reddit.com                youtube.com                  reddit.com/r/programming     steam
+youtube.com/shorts        reddit.com                   reddit.com/r/linux           discord
 twitter.com
 ```
+
+**Full-page vs media:** `youtube.com` in **Blocked Websites** redirects the tab to the blocked page. The same host only in **Media-blocked websites** leaves YouTube navigable but the extension cancels `image` / `media` / `object` requests initiated by that page, plus typical video/audio fetches (`xmlhttprequest`/`other` URLs such as `.mp4` or YouTube `videoplayback`). This is Chromium `declarativeNetRequest` inside the extension — not a proxy. After installing or updating the extension, reload it unpacked on `chrome://extensions`.
+
+Media patterns use the same host/path syntax as blocked websites. Domain-only media rules match the **initiating document host** (including embeds of that host on other pages). Path-specific media rules (e.g. `youtube.com/shorts`) apply to the tab's document URL — Chromium cannot filter by initiator path.
+
+Allow lists and grants still use intersection logic for full-page blocks. A domain-wide allow/grant on a host suppresses host-wide media DNR for that block; a path-only allow does not re-enable media under a domain-wide media rule (fail-closed). Grants are requested against full-page `websites_blocked` matches; an existing grant also overlays onto media-matching blocks.
 
 ### Pattern matching
 

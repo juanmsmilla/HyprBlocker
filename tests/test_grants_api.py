@@ -214,6 +214,26 @@ def test_grant_does_not_loosen_locked_block(client, monkeypatch):
     assert "reddit.com" not in focus["allowed"]
 
 
+def test_blocked_sites_exposes_media_patterns(client):
+    _make_block(
+        client,
+        websites_blocked="reddit.com",
+        websites_media_blocked="youtube.com\ntwitch.tv",
+    )
+    sites = client.get("/api/blocked-sites").json()
+    focus = next(b for b in sites["blocks"] if b["name"] == "Focus")
+    assert focus["blocked"] == ["reddit.com"]
+    assert focus["media_blocked"] == ["youtube.com", "twitch.tv"]
+
+
+def test_blocked_sites_media_only_block(client):
+    _make_block(client, websites_blocked="", websites_media_blocked="youtube.com")
+    sites = client.get("/api/blocked-sites").json()
+    focus = next(b for b in sites["blocks"] if b["name"] == "Focus")
+    assert focus["blocked"] == []
+    assert focus["media_blocked"] == ["youtube.com"]
+
+
 def test_status_exposes_migration_fields(client):
     r = client.get("/api/status").json()
     assert r["layout"] == "user"
