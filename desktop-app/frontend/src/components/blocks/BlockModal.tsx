@@ -172,10 +172,13 @@ export function BlockModal({ isOpen, onClose, editBlock }: BlockModalProps) {
 
         {/* Blocked Content Section */}
         <FormSection title="Blocked Content" hint="Enter one item per line">
-          <FormGroup label="Blocked Websites" hint="Supports paths: youtube.com/shorts blocks only YouTube Shorts">
+          <FormGroup
+            label="Blocked Websites"
+            hint="Host/path patterns, or * for every http(s) URL. Allowed websites are the exceptions. chrome://, extension pages, and localhost are never blocked."
+          >
             <Textarea
               rows={4}
-              placeholder="reddit.com&#10;youtube.com/shorts&#10;twitter.com"
+              placeholder={'*\nreddit.com\nyoutube.com/shorts'}
               value={formData.websites_blocked || ''}
               onChange={(e) => updateField('websites_blocked', e.target.value || '')}
             />
@@ -183,20 +186,23 @@ export function BlockModal({ isOpen, onClose, editBlock }: BlockModalProps) {
 
           <FormGroup
             label="Media-blocked websites"
-            hint="Page stays available; images, video, and audio requests are cancelled. Same host/path patterns as blocked websites."
+            hint="Page stays available; images, video, and audio are cancelled. * = every URL; use Allowed websites for exceptions (e.g. radio, tools)."
           >
             <Textarea
               rows={3}
-              placeholder="youtube.com&#10;reddit.com"
+              placeholder={'*\nyoutube.com'}
               value={formData.websites_media_blocked || ''}
               onChange={(e) => updateField('websites_media_blocked', e.target.value || '')}
             />
           </FormGroup>
 
-          <FormGroup label="Allowed Websites (exceptions)" hint="Allow list overrides block list">
+          <FormGroup
+            label="Allowed Websites (exceptions)"
+            hint="Overrides Blocked and Media-blocked lists, including when those lists use *"
+          >
             <Textarea
               rows={3}
-              placeholder="youtube.com/educational&#10;reddit.com/r/programming"
+              placeholder={'openai.com\nreddit.com/r/programming'}
               value={formData.websites_allowed || ''}
               onChange={(e) => updateField('websites_allowed', e.target.value || '')}
             />

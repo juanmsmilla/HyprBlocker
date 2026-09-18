@@ -38,8 +38,8 @@ It's equally honest about what it *can't* stop — see [Limitations](#limitation
 
 ## Features
 
-- **Website blocking** — domain, subdomain, wildcard (`*.reddit.com`), and path-specific (`youtube.com/shorts`) patterns
-- **Media / resource-type blocking** — keep a site navigable but cancel images, video, and audio (and typical media fetches) on matching pages
+- **Website blocking** — domain, subdomain, wildcard (`*.reddit.com`), path-specific (`youtube.com/shorts`), and catch-all (`*` = every http(s) URL, with allow-list exceptions)
+- **Media / resource-type blocking** — keep a site navigable but cancel images, video, and audio (and typical media fetches) on matching pages; `*` strips media everywhere except allows
 - **Allow-list exceptions** — block all of Reddit except `reddit.com/r/programming`
 - **App blocking** — closes blocked applications via Hyprland IPC (window-class matching)
 - **Scheduling** — always-on or time ranges per weekday (e.g. weekdays 9–5)
@@ -148,21 +148,25 @@ A *block* groups rules together and defines when they're enforced and when confi
 
 ```
 Blocked Websites          Media-blocked websites       Allowed Websites             Blocked Applications
-reddit.com                youtube.com                  reddit.com/r/programming     steam
-youtube.com/shorts        reddit.com                   reddit.com/r/linux           discord
+*                         *                            openai.com                   steam
+reddit.com                youtube.com                  radio.example.com            discord
+youtube.com/shorts
 twitter.com
 ```
 
+**Catch-all `*`:** a literal `*` in **Blocked Websites** redirects **every** http(s) page to the blocked page. A literal `*` in **Media-blocked websites** strips images/video/audio on **every** page. Use **Allowed Websites** on the same block as the exception list (e.g. tools, radio). `http*` and similar globs are **not** catch-alls — only the single-character pattern `*`. Browser internals (`chrome://`, `chrome-extension://`, `about:`, `edge:`) and loopback (`localhost` / `127.0.0.1`, including the daemon on port 8765) are never matched by `*`. If `*` and specific hosts appear in the same list, `*` dominates that list.
+
 **Full-page vs media:** `youtube.com` in **Blocked Websites** redirects the tab to the blocked page. The same host only in **Media-blocked websites** leaves YouTube navigable but the extension cancels `image` / `media` / `object` requests initiated by that page, plus typical video/audio fetches (`xmlhttprequest`/`other` URLs such as `.mp4` or YouTube `videoplayback`). This is Chromium `declarativeNetRequest` inside the extension — not a proxy. After installing or updating the extension, reload it unpacked on `chrome://extensions`.
 
-Media patterns use the same host/path syntax as blocked websites. Domain-only media rules match the **initiating document host** (including embeds of that host on other pages). Path-specific media rules (e.g. `youtube.com/shorts`) apply to the tab's document URL — Chromium cannot filter by initiator path.
+Media patterns use the same host/path syntax as blocked websites, plus `*`. Domain-only media rules match the **initiating document host** (including embeds of that host on other pages). Path-specific media rules (e.g. `youtube.com/shorts`) apply to the tab's document URL — Chromium cannot filter by initiator path. Catch-all media uses a global DNR block plus higher-priority allows for domain-wide exceptions and tab session rules for the rest.
 
-Allow lists and grants still use intersection logic for full-page blocks. A domain-wide allow/grant on a host suppresses host-wide media DNR for that block; a path-only allow does not re-enable media under a domain-wide media rule (fail-closed). Grants are requested against full-page `websites_blocked` matches; an existing grant also overlays onto media-matching blocks.
+Allow lists and grants still use intersection logic. A domain-wide allow/grant on a host suppresses host-wide media DNR for that block; a path-only allow does not re-enable media under a **domain-wide** media rule (fail-closed). Under catch-all `*`, a matching allow (domain or path) leaves that page's media intact. Grants are requested against full-page `websites_blocked` matches; an existing grant also overlays onto media-matching blocks (including `*`).
 
 ### Pattern matching
 
 | Pattern | Matches |
 | --- | --- |
+| `*` | every http(s) URL (not chrome://, extension pages, about:, edge:, or localhost) |
 | `reddit.com` | reddit.com, all subdomains, all paths |
 | `youtube.com/shorts` | only that path and its subpaths |
 | `*.reddit.com` | all subdomains |

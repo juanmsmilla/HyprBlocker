@@ -27,9 +27,9 @@ class BlockCreate(BaseModel):
     lock_mode: str = 'none'  # 'none', 'locked_until'
     lock_until: str | None = None  # ISO format datetime
     enabled: bool = True
-    websites_blocked: str | None = None  # Newline-separated list
-    websites_allowed: str | None = None  # Newline-separated allow list
-    websites_media_blocked: str | None = None  # Images/video/audio on matching pages
+    websites_blocked: str | None = None  # Newline-separated; literal * = every http(s) URL
+    websites_allowed: str | None = None  # Newline-separated allow list (exceptions, including to *)
+    websites_media_blocked: str | None = None  # Images/video/audio; * = every page except allows
     apps_blocked: str | None = None      # Newline-separated list
 
 

@@ -73,6 +73,20 @@ def test_overlay_matches_media_only_blocks():
     assert blocks[0]["allowed"] == []  # original untouched
 
 
+def test_overlay_matches_catch_all_blocked_and_media():
+    now = datetime.now(UTC)
+    grant = _grant("https://openai.com", now=now)
+    blocks = [
+        {"id": 1, "name": "web", "blocked": ["*"], "media_blocked": [], "allowed": []},
+        {"id": 2, "name": "media", "blocked": [], "media_blocked": ["*"], "allowed": []},
+        {"id": 3, "name": "unrelated", "blocked": ["reddit.com"], "media_blocked": [], "allowed": []},
+    ]
+    out = store.overlay_blocks(blocks, [grant], now)
+    assert "openai.com" in out[0]["allowed"]
+    assert "openai.com" in out[1]["allowed"]
+    assert out[2]["allowed"] == []
+
+
 def test_no_grants_returns_input_unchanged():
     now = datetime.now(UTC)
     blocks = _blocks()

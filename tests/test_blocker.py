@@ -2,7 +2,13 @@
 
 import pytest
 
-from daemon.blocker import AppBlocker, SiteBlocker, parse_rules_from_text
+from daemon.blocker import (
+    AppBlocker,
+    SiteBlocker,
+    is_catch_all_pattern,
+    is_protected_url,
+    parse_rules_from_text,
+)
 
 
 class TestParseRulesFromText:
@@ -126,6 +132,34 @@ class TestUrlMatchesPattern:
     def test_whitespace_stripped(self):
         assert SiteBlocker.url_matches_pattern("  reddit.com  ", " reddit.com ")
 
+    def test_catch_all_matches_every_http_site(self):
+        assert is_catch_all_pattern("*")
+        assert is_catch_all_pattern(" * ")
+        assert is_catch_all_pattern("https://*")
+        assert not is_catch_all_pattern("http*")
+        assert not is_catch_all_pattern("*.reddit.com")
+        assert SiteBlocker.url_matches_pattern("https://example.com/foo", "*")
+        assert SiteBlocker.url_matches_pattern("example.com", "*")
+        assert SiteBlocker.url_matches_pattern("www.news.example.com/a", "*")
+
+    def test_catch_all_rejects_internals_and_loopback(self):
+        assert not SiteBlocker.url_matches_pattern("chrome://extensions", "*")
+        assert not SiteBlocker.url_matches_pattern("chrome-extension://abc/page.html", "*")
+        assert not SiteBlocker.url_matches_pattern("about:blank", "*")
+        assert not SiteBlocker.url_matches_pattern("edge://settings", "*")
+        assert not SiteBlocker.url_matches_pattern("http://127.0.0.1:8765/api", "*")
+        assert not SiteBlocker.url_matches_pattern("http://localhost:8765/", "*")
+        assert not SiteBlocker.url_matches_pattern("127.0.0.1:8765", "*")
+        assert not SiteBlocker.url_matches_pattern("localhost", "*")
+        assert not SiteBlocker.url_matches_pattern("example.com", "http*")
+
+    def test_protected_url_helper(self):
+        assert is_protected_url("chrome://extensions")
+        assert is_protected_url("http://127.0.0.1:8765/api")
+        assert is_protected_url("localhost")
+        assert not is_protected_url("https://example.com/")
+        assert not is_protected_url("reddit.com")
+
 
 class TestShouldBlockUrl:
     def setup_method(self):
@@ -153,6 +187,26 @@ class TestShouldBlockUrl:
 
     def test_empty_lists_block_nothing(self):
         assert not self.blocker.should_block_url("reddit.com", [], [])
+
+    def test_catch_all_blocks_every_site_except_allows(self):
+        assert self.blocker.should_block_url("https://example.com/", ["*"], ["openai.com"])
+        assert self.blocker.should_block_url("news.ycombinator.com", ["*"], ["openai.com"])
+        assert not self.blocker.should_block_url("https://openai.com/", ["*"], ["openai.com"])
+        assert not self.blocker.should_block_url("https://chat.openai.com/", ["*"], ["openai.com"])
+
+    def test_catch_all_never_blocks_internals_or_daemon(self):
+        assert not self.blocker.should_block_url("chrome://extensions", ["*"], [])
+        assert not self.blocker.should_block_url("chrome-extension://abc/blocked.html", ["*"], [])
+        assert not self.blocker.should_block_url("about:blank", ["*"], [])
+        assert not self.blocker.should_block_url("http://127.0.0.1:8765/api", ["*"], [])
+        assert not self.blocker.should_block_url("http://localhost:8765/", ["*"], [])
+
+    def test_catch_all_with_specific_hosts_still_blocks_everything(self):
+        assert self.blocker.should_block_url("https://example.com/", ["*", "reddit.com"], [])
+
+    def test_without_catch_all_host_patterns_unchanged(self):
+        assert self.blocker.should_block_url("reddit.com", ["reddit.com"], [])
+        assert not self.blocker.should_block_url("example.com", ["reddit.com"], [])
 
 
 class TestAppMatchesPattern:

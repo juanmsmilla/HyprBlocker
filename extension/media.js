@@ -4,6 +4,10 @@
  * Semantics (enforced in the Chromium extension via declarativeNetRequest):
  *
  * - `websites_blocked` still redirects navigations (see background.js).
+ * - Literal `*` in `media_blocked` is a catch-all: strip media on every
+ *   http(s) page except that block's allow list (and grants overlay).
+ *   Browser internals and loopback (localhost / 127.0.0.1) are never
+ *   catch-all targets — fail open so the daemon and chrome:// stay up.
  * - `media_blocked` (from `websites_media_blocked`) does **not** cancel
  *   main_frame / document navigations. Matching pages stay available.
  * - A media rule matches the **initiating document**: image/video/audio
@@ -18,7 +22,9 @@
  *   block does not allow the URL. Domain-wide allows/grants on a host
  *   suppress host-wide initiator DNR for that block. Path-only allows do
  *   not punch a hole in domain-wide media rules (fail-closed: DNR has no
- *   initiator-path exclusion). Grants are requested against full-page
+ *   initiator-path exclusion). Under catch-all `*`, a matching allow
+ *   (domain or path) leaves that document's media intact via higher-priority
+ *   session allow rules. Grants are requested against full-page
  *   `websites_blocked` matches; an existing grant also overlays onto
  *   media-matching blocks' allowed[].
  *
@@ -34,7 +40,12 @@ const MEDIA_FETCH_REGEX =
 
 const DYNAMIC_RULE_ID_TYPES = 1;
 const DYNAMIC_RULE_ID_FETCH = 2;
+const DYNAMIC_RULE_ID_CDN = 3;
+const DYNAMIC_RULE_ID_CDN_FETCH = 4;
+const DYNAMIC_RULE_ID_ALLOW_TYPES = 5;
+const DYNAMIC_RULE_ID_ALLOW_FETCH = 6;
 const SESSION_RULE_ID_BASE = 1000;
+const PROTECTED_DNR_DOMAINS = ['localhost', '127.0.0.1'];
 
 /**
  * Strip scheme / trailing slash; lowercase. Does not remove path.
@@ -77,6 +88,25 @@ function matchPath(urlPath, pattern) {
     return globalThis.matchesPatternWithPath(urlPath, pattern);
 }
 
+function patternIsCatchAll(pattern) {
+    const fn = globalThis.isCatchAllPattern;
+    if (typeof fn === 'function') {
+        return fn(pattern);
+    }
+    return String(pattern || '').trim() === '*';
+}
+
+function hasMediaCatchAll(blocks) {
+    for (const block of blocks || []) {
+        for (const pattern of block.media_blocked || []) {
+            if (patternIsCatchAll(pattern)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 function patternsMatchUrl(urlPath, patterns) {
     if (!patterns) {
         return false;
@@ -98,7 +128,15 @@ function patternsMatchUrl(urlPath, patterns) {
  * @returns {{blocked: boolean, allowed?: boolean, blockName?: string, hostname?: string}}
  */
 function shouldBlockMedia(url, blocks) {
+    const evaluate = globalThis.evaluateUrlAgainstBlockField;
+    if (typeof evaluate === 'function') {
+        return evaluate(url, blocks, 'media_blocked');
+    }
     try {
+        const protectedFn = globalThis.isProtectedBrowserUrl;
+        if (typeof protectedFn === 'function' && protectedFn(url)) {
+            return { blocked: false };
+        }
         const urlObj = new URL(url);
         const hostname = urlObj.hostname;
         const fullPath = hostname + urlObj.pathname;
@@ -190,7 +228,7 @@ function collectMediaInitiatorDomains(blocks) {
         const media = block.media_blocked || [];
         const allowed = block.allowed || [];
         for (const pattern of media) {
-            if (isPathSpecificPattern(pattern)) {
+            if (isPathSpecificPattern(pattern) || patternIsCatchAll(pattern)) {
                 continue;
             }
             const domain = patternToInitiatorDomain(pattern);
@@ -215,7 +253,7 @@ function collectMediaCdnRequestDomains(blocks) {
         const media = block.media_blocked || [];
         const allowed = block.allowed || [];
         for (const pattern of media) {
-            if (isPathSpecificPattern(pattern)) {
+            if (isPathSpecificPattern(pattern) || patternIsCatchAll(pattern)) {
                 continue;
             }
             const domain = patternToInitiatorDomain(pattern);
@@ -243,14 +281,87 @@ function mediaBlockRule(id, condition) {
     };
 }
 
-/**
- * Persistent (dynamic) DNR rules: initiator host → cancel media types.
- * Does not include main_frame / sub_frame / script / etc.
- */
-const DYNAMIC_RULE_ID_CDN = 3;
-const DYNAMIC_RULE_ID_CDN_FETCH = 4;
+function mediaAllowRule(id, condition) {
+    return {
+        id: id,
+        priority: 2,
+        action: { type: 'allow' },
+        condition: condition
+    };
+}
 
+/**
+ * Domain-wide allow hosts that shouldBlockMedia does not strip at `/`.
+ * Path-only allows are left to tab session allow rules (DNR has no
+ * initiator-path filter).
+ */
+function collectCatchAllMediaAllowDomains(blocks) {
+    const candidates = new Set();
+    for (const block of blocks || []) {
+        for (const pattern of block.allowed || []) {
+            if (isPathSpecificPattern(pattern) || patternIsCatchAll(pattern)) {
+                continue;
+            }
+            const domain = patternToInitiatorDomain(pattern);
+            if (!domain) {
+                continue;
+            }
+            for (const d of expandInitiatorAliases(domain)) {
+                candidates.add(d);
+            }
+        }
+    }
+    const allowed = [];
+    for (const domain of candidates) {
+        if (!shouldBlockMedia('https://' + domain + '/', blocks).blocked) {
+            allowed.push(domain);
+        }
+    }
+    return allowed.sort();
+}
+
+function buildCatchAllDynamicMediaRules(blocks) {
+    const allowDomains = collectCatchAllMediaAllowDomains(blocks);
+    const excludedInitiators = [...new Set([...PROTECTED_DNR_DOMAINS, ...allowDomains])].sort();
+    const rules = [
+        mediaBlockRule(DYNAMIC_RULE_ID_TYPES, {
+            resourceTypes: MEDIA_RESOURCE_TYPES,
+            excludedInitiatorDomains: excludedInitiators,
+            excludedRequestDomains: PROTECTED_DNR_DOMAINS
+        }),
+        mediaBlockRule(DYNAMIC_RULE_ID_FETCH, {
+            regexFilter: MEDIA_FETCH_REGEX,
+            resourceTypes: MEDIA_FETCH_RESOURCE_TYPES,
+            excludedInitiatorDomains: excludedInitiators,
+            excludedRequestDomains: PROTECTED_DNR_DOMAINS
+        })
+    ];
+    if (allowDomains.length > 0) {
+        rules.push(mediaAllowRule(DYNAMIC_RULE_ID_ALLOW_TYPES, {
+            initiatorDomains: allowDomains,
+            resourceTypes: MEDIA_RESOURCE_TYPES
+        }));
+        rules.push(mediaAllowRule(DYNAMIC_RULE_ID_ALLOW_FETCH, {
+            initiatorDomains: allowDomains,
+            regexFilter: MEDIA_FETCH_REGEX,
+            resourceTypes: MEDIA_FETCH_RESOURCE_TYPES
+        }));
+    }
+    return rules;
+}
+
+/**
+ * Persistent (dynamic) DNR rules.
+ *
+ * Host lists: initiatorDomains (+ CDN requestDomains) as before.
+ * Catch-all `*`: global image/media/object (+ fetch regex) block, with
+ * higher-priority allow / excludedInitiatorDomains for domain-wide allows
+ * and always-excluded loopback. Does not include main_frame.
+ */
 function buildDynamicMediaRules(blocks) {
+    if (hasMediaCatchAll(blocks)) {
+        return buildCatchAllDynamicMediaRules(blocks);
+    }
     const domains = collectMediaInitiatorDomains(blocks);
     const cdns = collectMediaCdnRequestDomains(blocks);
     const rules = [];
@@ -283,17 +394,32 @@ function buildDynamicMediaRules(blocks) {
 /**
  * Tab-scoped session rules for path-specific media patterns (and as a
  * belt-and-suspenders for domain-only when the tab document matches).
+ *
+ * When catch-all `*` is active, pass allowTabIds so matching allow-list
+ * documents (including path-specific allows) get higher-priority allow
+ * rules that override the global dynamic block.
  */
-function buildSessionMediaRules(tabIds, startId) {
+function buildSessionMediaRules(tabIds, startId, allowTabIds) {
     const base = startId == null ? SESSION_RULE_ID_BASE : startId;
     const rules = [];
     let id = base;
-    for (const tabId of tabIds) {
+    for (const tabId of tabIds || []) {
         rules.push(mediaBlockRule(id++, {
             tabIds: [tabId],
             resourceTypes: MEDIA_RESOURCE_TYPES
         }));
         rules.push(mediaBlockRule(id++, {
+            tabIds: [tabId],
+            regexFilter: MEDIA_FETCH_REGEX,
+            resourceTypes: MEDIA_FETCH_RESOURCE_TYPES
+        }));
+    }
+    for (const tabId of allowTabIds || []) {
+        rules.push(mediaAllowRule(id++, {
+            tabIds: [tabId],
+            resourceTypes: MEDIA_RESOURCE_TYPES
+        }));
+        rules.push(mediaAllowRule(id++, {
             tabIds: [tabId],
             regexFilter: MEDIA_FETCH_REGEX,
             resourceTypes: MEDIA_FETCH_RESOURCE_TYPES
@@ -309,13 +435,18 @@ if (typeof module !== 'undefined' && module.exports) {
         MEDIA_FETCH_REGEX,
         DYNAMIC_RULE_ID_TYPES,
         DYNAMIC_RULE_ID_FETCH,
+        DYNAMIC_RULE_ID_ALLOW_TYPES,
+        DYNAMIC_RULE_ID_ALLOW_FETCH,
         SESSION_RULE_ID_BASE,
+        PROTECTED_DNR_DOMAINS,
         normalizeMediaPattern,
         isPathSpecificPattern,
         patternToInitiatorDomain,
+        hasMediaCatchAll,
         shouldBlockMedia,
         collectMediaInitiatorDomains,
         collectMediaCdnRequestDomains,
+        collectCatchAllMediaAllowDomains,
         expandInitiatorAliases,
         buildDynamicMediaRules,
         buildSessionMediaRules

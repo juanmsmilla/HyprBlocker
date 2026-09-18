@@ -324,9 +324,11 @@ function startRulesRefresh() {
  * Install declarativeNetRequest rules that cancel image/media/object (and
  * typical video/audio XHR) without touching main_frame navigations.
  *
- * Dynamic rules cover domain-only media patterns via initiatorDomains.
+ * Dynamic rules cover domain-only media patterns via initiatorDomains,
+ * or a global catch-all when `*` is in media_blocked.
  * Session rules cover the current tab when its document URL matches
- * (path-specific patterns and allow-list evaluation).
+ * (path-specific patterns and allow-list evaluation). Catch-all also
+ * installs session *allow* rules on allowed http(s) tabs.
  *
  * @param {Object<number, string>} [pendingNavigations] tabId → URL for
  *   navigations that have not yet committed (tabs.query still has the old URL).
@@ -359,27 +361,33 @@ async function refreshMediaNetRequestRules(pendingNavigations) {
         const urlByTab = pendingNavigations || {};
         const tabs = await chrome.tabs.query({});
         const mediaTabIds = [];
+        const allowTabIds = [];
+        const catchAll = hasMediaCatchAll(blocksData);
         const seen = new Set();
+
+        const classifyTab = (tabId, url) => {
+            if (url && shouldBlockMedia(url, blocksData).blocked) {
+                mediaTabIds.push(tabId);
+            } else if (catchAll && url && isHttpOrHttpsUrl(url) && !isProtectedBrowserUrl(url)) {
+                allowTabIds.push(tabId);
+            }
+        };
+
         for (const tab of tabs) {
             if (tab.id == null) {
                 continue;
             }
             seen.add(tab.id);
-            const url = urlByTab[tab.id] || tab.url;
-            if (url && shouldBlockMedia(url, blocksData).blocked) {
-                mediaTabIds.push(tab.id);
-            }
+            classifyTab(tab.id, urlByTab[tab.id] || tab.url);
         }
         for (const [tabIdStr, url] of Object.entries(urlByTab)) {
             const tabId = Number(tabIdStr);
             if (seen.has(tabId)) {
                 continue;
             }
-            if (url && shouldBlockMedia(url, blocksData).blocked) {
-                mediaTabIds.push(tabId);
-            }
+            classifyTab(tabId, url);
         }
-        const sessionRules = buildSessionMediaRules(mediaTabIds);
+        const sessionRules = buildSessionMediaRules(mediaTabIds, null, catchAll ? allowTabIds : []);
         const existingSession = await chrome.declarativeNetRequest.getSessionRules();
         await chrome.declarativeNetRequest.updateSessionRules({
             removeRuleIds: existingSession.map((rule) => rule.id),
@@ -402,59 +410,13 @@ async function refreshMediaNetRequestRules(pendingNavigations) {
  * in the allow list of EVERY block that would otherwise block it.
  */
 function shouldBlockUrl(url) {
-    try {
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname;
-        const fullPath = hostname + urlObj.pathname;
-
-        // Find all blocks that would block this URL (ignoring allow lists)
-        const blockingBlocks = [];
-
-        for (const block of blocksData) {
-            // Check if this block's blocked patterns match the URL
-            for (const pattern of block.blocked) {
-                if (matchesPatternWithPath(fullPath, pattern)) {
-                    blockingBlocks.push(block);
-                    break;  // This block would block it, move to next block
-                }
-            }
-        }
-
-        // If no blocks would block this URL, it's allowed
-        if (blockingBlocks.length === 0) {
-            return { blocked: false };
-        }
-
-        // Check if URL is in the allow list of EVERY blocking block
-        for (const block of blockingBlocks) {
-            let urlAllowedByThisBlock = false;
-
-            for (const pattern of block.allowed) {
-                if (matchesPatternWithPath(fullPath, pattern)) {
-                    urlAllowedByThisBlock = true;
-                    break;
-                }
-            }
-
-            // If this blocking block doesn't allow the URL, it's blocked
-            if (!urlAllowedByThisBlock) {
-                console.log('🚫 URL blocked by block:', block.name, '→', url);
-                return {
-                    blocked: true,
-                    blockName: block.name,
-                    hostname: hostname
-                };
-            }
-        }
-
-        // URL is in the allow list of ALL blocking blocks
+    const result = evaluateUrlAgainstBlockField(url, blocksData, 'blocked');
+    if (result.blocked) {
+        console.log('🚫 URL blocked by block:', result.blockName, '→', url);
+    } else if (result.allowed) {
         console.log('✅ URL allowed by all blocking blocks →', url);
-        return { blocked: false, allowed: true };
-
-    } catch (error) {
-        console.error('Invalid URL:', url);
-        return { blocked: false };
     }
+    return result;
 }
 
 /**
