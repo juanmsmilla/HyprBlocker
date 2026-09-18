@@ -138,7 +138,7 @@ describe('DNR compilation', () => {
     test('wildcard media pattern uses the base domain', () => {
         expect(collectMediaInitiatorDomains([
             { media_blocked: ['*.reddit.com'], allowed: [] },
-        ])).toEqual(['reddit.com']);
+        ])).toEqual(['reddit.com', 'www.reddit.com']);
     });
 
     test('domain-wide allow/grant suppresses initiator DNR for that host', () => {
