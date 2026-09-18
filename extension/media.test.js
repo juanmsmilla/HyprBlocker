@@ -116,7 +116,9 @@ describe('DNR compilation', () => {
         ]);
         expect(rules.length).toBe(2);
         expect(rules[0].action.type).toBe('block');
-        expect(rules[0].condition.initiatorDomains).toEqual(['reddit.com', 'youtube.com']);
+        expect(rules[0].condition.initiatorDomains).toEqual([
+            'm.youtube.com', 'music.youtube.com', 'reddit.com', 'www.reddit.com', 'www.youtube.com', 'youtube.com',
+        ]);
         expect(rules[0].condition.resourceTypes).toEqual(MEDIA_RESOURCE_TYPES);
         expect(rules[0].condition.resourceTypes).not.toContain('main_frame');
         expect(rules[1].condition.regexFilter).toContain('videoplayback');
@@ -148,7 +150,7 @@ describe('DNR compilation', () => {
     test('path-only allow does not suppress host-wide initiator DNR', () => {
         expect(collectMediaInitiatorDomains([
             { media_blocked: ['youtube.com'], allowed: ['youtube.com/watch'] },
-        ])).toEqual(['youtube.com']);
+        ])).toEqual(['m.youtube.com', 'music.youtube.com', 'www.youtube.com', 'youtube.com']);
     });
 
     test('empty media lists produce no dynamic rules', () => {

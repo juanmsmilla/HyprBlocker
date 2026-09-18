@@ -342,8 +342,19 @@ async function refreshMediaNetRequestRules(pendingNavigations) {
         const existingDynamic = await chrome.declarativeNetRequest.getDynamicRules();
         await chrome.declarativeNetRequest.updateDynamicRules({
             removeRuleIds: existingDynamic.map((rule) => rule.id),
-            addRules: dynamicRules
+            addRules: []
         });
+        // Add one-by-one so a single invalid rule (e.g. regex) does not abort the rest.
+        let added = 0;
+        for (const rule of dynamicRules) {
+            try {
+                await chrome.declarativeNetRequest.updateDynamicRules({ addRules: [rule] });
+                added += 1;
+            } catch (ruleError) {
+                console.error('Media DNR dynamic rule failed:', rule.id, ruleError, rule);
+            }
+        }
+        console.log('Media DNR dynamic rules added:', added, '/', dynamicRules.length);
 
         const urlByTab = pendingNavigations || {};
         const tabs = await chrome.tabs.query({});

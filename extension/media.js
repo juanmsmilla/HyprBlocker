@@ -30,7 +30,7 @@ const MEDIA_RESOURCE_TYPES = ['image', 'media', 'object'];
 const MEDIA_FETCH_RESOURCE_TYPES = ['xmlhttprequest', 'other'];
 // DASH/HLS and <video> fetches often show up as XHR rather than `media`.
 const MEDIA_FETCH_REGEX =
-    '(videoplayback|\\.(mp4|m4v|m4s|m4a|webm|mp3|m3u8|ogg|wav|flac|mov|avi)([?#]|$))';
+    'videoplayback|\.mp4|\.m4v|\.m4s|\.m4a|\.webm|\.mp3|\.m3u8|\.ogg|\.wav|\.flac|\.mov|\.avi';
 
 const DYNAMIC_RULE_ID_TYPES = 1;
 const DYNAMIC_RULE_ID_FETCH = 2;
@@ -137,6 +137,53 @@ function shouldBlockMedia(url, blocks) {
  * whole host (e.g. a domain-wide grant) does not contribute that host —
  * otherwise grants could never unstrip media.
  */
+function expandInitiatorAliases(domain) {
+    const out = new Set([domain]);
+    if (!domain.startsWith('www.')) {
+        out.add('www.' + domain);
+    }
+    // Common app / mobile hosts for the sites we care about most.
+    if (domain === 'youtube.com' || domain.endsWith('.youtube.com')) {
+        out.add('m.youtube.com');
+        out.add('music.youtube.com');
+        out.add('www.youtube.com');
+    }
+    if (domain === 'x.com' || domain === 'twitter.com') {
+        out.add('www.x.com');
+        out.add('mobile.x.com');
+        out.add('twitter.com');
+        out.add('www.twitter.com');
+        out.add('mobile.twitter.com');
+        out.add('x.com');
+    }
+    return [...out];
+}
+
+/** CDN / media hosts to block by request URL when a site is media-blocked. */
+function cdnRequestDomainsFor(domain) {
+    if (domain === 'youtube.com' || domain.endsWith('.youtube.com')) {
+        return [
+            'googlevideo.com',
+            'www.googlevideo.com',
+            'ytimg.com',
+            'i.ytimg.com',
+            'i1.ytimg.com',
+            'i9.ytimg.com',
+            'yt3.ggpht.com',
+            'ggpht.com',
+        ];
+    }
+    if (domain === 'x.com' || domain === 'twitter.com') {
+        return [
+            'abs.twimg.com',
+            'pbs.twimg.com',
+            'video.twimg.com',
+            'ton.twimg.com',
+        ];
+    }
+    return [];
+}
+
 function collectMediaInitiatorDomains(blocks) {
     const domains = new Set();
     for (const block of blocks || []) {
@@ -150,11 +197,38 @@ function collectMediaInitiatorDomains(blocks) {
             if (!domain) {
                 continue;
             }
-            const hostAllowed = allowed.some((p) => matchPath(domain, p));
+            const hostAllowed = allowed.some((p) => matchPath(domain, p) || matchPath('www.' + domain, p));
             if (hostAllowed) {
                 continue;
             }
-            domains.add(domain);
+            for (const d of expandInitiatorAliases(domain)) {
+                domains.add(d);
+            }
+        }
+    }
+    return [...domains].sort();
+}
+
+function collectMediaCdnRequestDomains(blocks) {
+    const domains = new Set();
+    for (const block of blocks || []) {
+        const media = block.media_blocked || [];
+        const allowed = block.allowed || [];
+        for (const pattern of media) {
+            if (isPathSpecificPattern(pattern)) {
+                continue;
+            }
+            const domain = patternToInitiatorDomain(pattern);
+            if (!domain) {
+                continue;
+            }
+            const hostAllowed = allowed.some((p) => matchPath(domain, p) || matchPath('www.' + domain, p));
+            if (hostAllowed) {
+                continue;
+            }
+            for (const d of cdnRequestDomainsFor(domain)) {
+                domains.add(d);
+            }
         }
     }
     return [...domains].sort();
@@ -173,22 +247,37 @@ function mediaBlockRule(id, condition) {
  * Persistent (dynamic) DNR rules: initiator host → cancel media types.
  * Does not include main_frame / sub_frame / script / etc.
  */
+const DYNAMIC_RULE_ID_CDN = 3;
+const DYNAMIC_RULE_ID_CDN_FETCH = 4;
+
 function buildDynamicMediaRules(blocks) {
     const domains = collectMediaInitiatorDomains(blocks);
-    if (domains.length === 0) {
-        return [];
-    }
-    return [
-        mediaBlockRule(DYNAMIC_RULE_ID_TYPES, {
+    const cdns = collectMediaCdnRequestDomains(blocks);
+    const rules = [];
+    if (domains.length > 0) {
+        rules.push(mediaBlockRule(DYNAMIC_RULE_ID_TYPES, {
             initiatorDomains: domains,
             resourceTypes: MEDIA_RESOURCE_TYPES
-        }),
-        mediaBlockRule(DYNAMIC_RULE_ID_FETCH, {
+        }));
+        rules.push(mediaBlockRule(DYNAMIC_RULE_ID_FETCH, {
             initiatorDomains: domains,
             regexFilter: MEDIA_FETCH_REGEX,
             resourceTypes: MEDIA_FETCH_RESOURCE_TYPES
-        })
-    ];
+        }));
+    }
+    if (cdns.length > 0) {
+        // Belt-and-suspenders: YouTube/X put bits on CDNs; initiator match can miss.
+        rules.push(mediaBlockRule(DYNAMIC_RULE_ID_CDN, {
+            requestDomains: cdns,
+            resourceTypes: MEDIA_RESOURCE_TYPES
+        }));
+        rules.push(mediaBlockRule(DYNAMIC_RULE_ID_CDN_FETCH, {
+            requestDomains: cdns,
+            regexFilter: MEDIA_FETCH_REGEX,
+            resourceTypes: MEDIA_FETCH_RESOURCE_TYPES
+        }));
+    }
+    return rules;
 }
 
 /**
@@ -226,6 +315,8 @@ if (typeof module !== 'undefined' && module.exports) {
         patternToInitiatorDomain,
         shouldBlockMedia,
         collectMediaInitiatorDomains,
+        collectMediaCdnRequestDomains,
+        expandInitiatorAliases,
         buildDynamicMediaRules,
         buildSessionMediaRules
     };
