@@ -1,131 +1,123 @@
-# Personal fork notes — media-only blocking
+# Personal fork changelog — juanmsmilla/HyprBlocker
 
-This file tracks **Juan’s fork-only** change for native media / resource-type blocking  
-(`juanmsmilla/HyprBlocker`, merged via PR #1 → `5eeaa0b`).  
-Upstream `TTeuber/HyprBlocker` does not have this unless we open a PR later.
+Notes for **this fork only**. Upstream is `TTeuber/HyprBlocker` (`upstream` remote).  
+Local remotes: `origin` → this fork, `upstream` → TTeuber.
 
----
-
-## What problem this solves
-
-Normal **Blocked websites** kill the whole page (navigation → `blocked.html`).
-
-**Media-blocked websites** leave the page open but cancel images, video, and audio  
-the page tries to load (including CDN hosts like `googlevideo.com` when YouTube  
-is the initiator).
-
-Inspired by GateSentry MIME filtering — implemented **inside** the Chromium  
-extension with `declarativeNetRequest`. No GateSentry / MITM proxy.
+Do not assume upstream has any of the below unless we open a PR to them later.
 
 ---
 
-## How to use
+## Summary of fork features
 
-1. Edit a block → field **Media-blocked websites** (newline-separated patterns).
-2. Use the same pattern style as other website rules (`youtube.com`, `*.reddit.com`,  
-   `youtube.com/shorts`, …).
-3. Keep that host **out of** Blocked websites if you only want media stripped.
-4. Enable the block. Reload the unpacked extension after updating files  
-   (`chrome://extensions` → Load unpacked / Reload from  
-   `~/.local/share/hyprblocker/extension/`).
+| Feature | What it does | Main commit(s) |
+|---------|----------------|----------------|
+| **Delay before unblock** | Queues deletes / loosens / delay-off for N minutes; cancelable | `5cafd53` |
+| **Delay log + 1 MiB rotate** | `~/.config/hyprblocker/unblock_delay.log`, size-rotated | part of delay work + follow-ups |
+| **Cancel delay in Blocks** | Actions column shows Cancel delay when a block change is pending | same era as delay |
+| **Media-only blocking** | Page stays up; image/video/audio requests cancelled | PR #1 → `5eeaa0b` / `2da0572` |
 
-Example:
-
-| Field | Value |
-|-------|--------|
-| Blocked websites | *(empty or other sites)* |
-| Media-blocked websites | `youtube.com` |
-| Enabled | on |
-
-→ YouTube UI loads; images / video / audio requests are cancelled.
-
-If the same host is also in **Blocked websites**, full-page block still wins for  
-navigation (you never stay on the site long enough for media rules to matter).
+Related outside this repo: ask app `/focus` enables the HyprBlocker block named `focus` via `PUT /api/blocks/{id}` on `127.0.0.1:8765` (not a HyprBlocker CLI).
 
 ---
 
-## What we changed (files)
+## 1. Cancelable delay before unblock
 
-### Daemon / data
+### Intent
+When delay is on, weakening protections waits N minutes and can be canceled  
+(impulse control). Tightening stays immediate.
 
-| Piece | Change |
-|-------|--------|
-| `daemon/database.py` | New column `websites_media_blocked` (TEXT, newline list) |
-| `daemon/migrations.py` | `migrate_websites_media_blocked` — `ALTER TABLE` if missing |
-| `daemon/api/schemas.py` | Create/update/response fields for the new column |
-| `daemon/api/routes/blocks.py` | Create / update / strict-add paths include media list |
-| `daemon/api/routes/status.py` | `/api/blocked-sites` each block includes `media_blocked: []` |
-| `daemon/grants/store.py` | Grants can overlay onto media-matching blocks’ `allowed[]` |
+### Behavior
+- Settings: toggle + minutes; pending list + Cancel; delay log panel.
+- Delayed: delete block, disable block, loosen rules, **turn delay off** or **lower minutes**.
+- Immediate: enable block, add stricter rules, raise delay minutes, etc.
+- New request for the same target restarts the full wait; Cancel aborts.
+- Blocks UI: when a block has a pending delete/disable, Actions shows **Cancel delay**  
+  only (edit/disable/delete hidden); status shows “Delay pending”.
+- Settings cancel still works for settings-kind pending jobs.
 
-### Extension
+### Main pieces
+- `daemon/pending_unblock.py` — queue, apply job, event log, **1 MiB rotate**  
+  (keeps `.1` `.2` `.3`)
+- Config: `unblock_delay_enabled`, `unblock_delay_minutes`
+- API: blocks/settings return `202` when queued; `/api/pending-unblocks`;  
+  `/api/settings/unblock-delay` + `/log`
+- Daemon job every ~5s applies due pending items
+- Desktop Settings + Blocks + bridges in `api_client` / `main.py`
 
-| Piece | Change |
-|-------|--------|
-| `extension/manifest.json` | Permissions: `declarativeNetRequest`, `declarativeNetRequestWithHostAccess` |
-| `extension/media.js` | Compile DNR rules from `media_blocked` + allows; match helpers |
-| `extension/media.test.js` | Unit tests for compilation / intersection |
-| `extension/background.js` | After fetching blocked-sites, refresh DNR dynamic + session rules |
+### Ops notes
+- Log path: `~/.config/hyprblocker/unblock_delay.log` (append; not cleared on reboot).
+- GUI “Failed to load delay settings” was caused by a **stale pyinstaller binary**  
+  (web assets updated without `--build`). Fix: `./install.sh --build` so bridge  
+  methods exist; delay load toasts now name which step failed (`status` / `pending` / `log`).
 
-### Desktop
-
-| Piece | Change |
-|-------|--------|
-| `BlockModal` / `AddRulesModal` | “Media-blocked websites” textarea |
-| Frontend types + `api_client` / `main.py` | Pass `websites_media_blocked` through |
-
-### Docs / tests
-
-- `README.md` — short usage note for the field  
-- API / migration / grant tests extended  
-
----
-
-## How it works (runtime)
-
-```
-Daemon (enabled blocks)
-  → GET /api/blocked-sites
-      blocks[].blocked[]        → full-page navigation block (existing)
-      blocks[].media_blocked[]  → media-only patterns (new)
-      blocks[].allowed[]        → allows / grants
-
-Extension (poll + on update)
-  → webNavigation: unchanged full-page redirect if blocked[] matches
-  → declarativeNetRequest:
-       • Domain patterns → dynamic rules on initiatorDomains
-         (cancel image / media / object from that page, even if
-          the file URL is on another host, e.g. googlevideo)
-       • Also cancel XHR/other URLs that look like video/audio
-         (.mp4, videoplayback, m3u8, …)
-       • Path patterns (e.g. youtube.com/shorts) → session rules
-         scoped to open tabs whose document URL matches
-       • Never cancels main_frame (document) on this path
-```
-
-**Allow / grant caveat:** domain-wide allows can suppress host-wide media DNR.  
-Path-only allows do **not** punch a hole in domain-wide media rules (DNR cannot  
-exclude by initiator path) — fail-closed. Grants still attach via the existing  
-full-page / store overlay path.
+### Backup before prototype
+`~/Work/focus/backups/hyprblocker-pre-delay-prototype-20260917-234126`
 
 ---
 
-## Commits / PR
+## 2. Media-only blocking (native extension)
 
-- PR: https://github.com/juanmsmilla/HyprBlocker/pull/1  
-- Merge commit: `5eeaa0b`  
-- Feature commit: `2da0572` — `feat: native media/resource-type blocking in the Chromium extension`
+### Intent
+Block **media** from sites without blocking the **page** (GateSentry-style idea,  
+no GateSentry / MITM).
+
+### Behavior
+- New field: **Media-blocked websites** → DB `websites_media_blocked`.
+- Patterns: same style as other website rules (`youtube.com`, path patterns, …).
+- Page navigations are **not** redirected by this field.
+- Extension cancels `image` / `media` / `object` (and typical video/audio fetches)  
+  initiated by matching pages — including CDN hosts (e.g. `googlevideo.com`).
+- Full **Blocked websites** behavior unchanged (still → `blocked.html`).
+- Same host in both lists: navigation block still applies when you hit the site.
+
+### Main pieces
+- Daemon: column + migration; schemas; blocks CRUD; `/api/blocked-sites` →  
+  `media_blocked[]`; grants overlay awareness
+- Extension: `media.js`, DNR permissions, `background.js` refreshes rules on poll
+- Desktop: BlockModal / AddRulesModal field; types + API client
+
+### How runtime works (short)
+1. Daemon exposes enabled blocks’ `media_blocked` patterns.
+2. Extension builds Chromium **declarativeNetRequest** rules:
+   - domain patterns → dynamic rules on **initiator** domains;
+   - path patterns → tab-scoped session rules (DNR can’t filter initiator by path);
+   - never cancels `main_frame` on this path.
+3. Also cancels XHR/other URLs that look like video/audio (`.mp4`, `videoplayback`, …).
+
+### Allow / grant caveat
+Domain-wide allows can suppress host-wide media DNR. Path-only allows do **not**  
+punch a hole in domain-wide media rules (fail-closed). Grants still go through the  
+existing store overlay path.
+
+### Verify
+1. Reload unpacked extension (`~/.local/share/hyprblocker/extension/`).
+2. Put host only in Media-blocked → page loads, media stripped.
+3. Put host in Blocked websites → full-page block as before.
+4. Restart daemon after pull so migration runs; rebuild desktop for GUI field  
+   (`./install.sh --build`).
+
+### PR
+https://github.com/juanmsmilla/HyprBlocker/pull/1
 
 ---
 
-## Local install checklist (Omarchy)
+## Local layout (Omarchy)
 
-After pulling `main`:
+| What | Where |
+|------|--------|
+| Clone | `~/Work/focus/HyprBlocker` |
+| Daemon | `systemctl --user` unit `hyprblocker`, `127.0.0.1:8765` |
+| Extension (installed) | `~/.local/share/hyprblocker/extension/` |
+| Desktop / tray | `~/.local/bin/hyprblocker`, `hyprblocker-tray` |
+| Config / delay log | `~/.config/hyprblocker/` |
 
-1. `systemctl --user restart hyprblocker` (runs migration)
-2. Sync extension → `~/.local/share/hyprblocker/extension/`
-3. Rebuild desktop if editing from GUI (`./install.sh --build`)
-4. Reload unpacked extension in Chromium
-5. Reopen `hyprblocker` GUI
+After pulling fork `main`: restart daemon → sync extension → rebuild desktop if  
+needed → reload extension → reopen GUI.
 
-Ask’s `/focus` only sets `enabled=true` on the block named `focus`; it does not  
-change media vs page lists.
+---
+
+## Intentionally not in this fork (yet)
+
+- YouTube **channel-id** allows (plan only: `~/Work/focus/IDEA_youtube_channels.md`)
+- GateSentry as a plugin / remote (rejected; media is native DNR instead)
+- `hyprblockerctl` CLI (ask `/focus` uses HTTP; GUI binary has no enable subcommand)
