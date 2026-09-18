@@ -114,7 +114,7 @@ describe('DNR compilation', () => {
         const rules = buildDynamicMediaRules([
             { media_blocked: ['youtube.com', 'reddit.com'], allowed: [] },
         ]);
-        expect(rules.length).toBe(2);
+        expect(rules.length).toBe(4); // initiator types+fetch + CDN types+fetch
         expect(rules[0].action.type).toBe('block');
         expect(rules[0].condition.initiatorDomains).toEqual([
             'm.youtube.com', 'music.youtube.com', 'reddit.com', 'www.reddit.com', 'www.youtube.com', 'youtube.com',
