@@ -33,6 +33,11 @@ class TestMatchingActiveBlocks:
         block = make_block(websites_blocked="reddit.com", enabled=False)
         assert tier1.matching_active_blocks("reddit.com", [block]) == []
 
+    def test_catch_all_matches_any_http_url(self):
+        block = make_block(websites_blocked="*")
+        assert tier1.matching_active_blocks("https://example.com/", [block]) == [block]
+        assert tier1.matching_active_blocks("openai.com", [block]) == [block]
+
 
 class TestPlanAllowlistGrant:
     def test_intersection_semantics_every_matching_block_mutated(self):

@@ -94,10 +94,13 @@ export function AddRulesModal({ isOpen, onClose, block }: AddRulesModalProps) {
         </p>
 
         <FormSection title="Add to Blocked Lists" hint="Enter one item per line">
-          <FormGroup label="Websites to Block" hint="These will be added to the blocked websites list">
+          <FormGroup
+            label="Websites to Block"
+            hint="These will be added to the blocked websites list. * means every http(s) URL; Allowed websites are the exceptions."
+          >
             <Textarea
               rows={4}
-              placeholder="reddit.com&#10;youtube.com/shorts&#10;twitter.com"
+              placeholder={'*\nreddit.com\nyoutube.com/shorts'}
               value={websitesBlockedAdd}
               onChange={(e) => setWebsitesBlockedAdd(e.target.value)}
             />
@@ -105,11 +108,11 @@ export function AddRulesModal({ isOpen, onClose, block }: AddRulesModalProps) {
 
           <FormGroup
             label="Websites to media-block"
-            hint="These will be added to the media-blocked list (page stays available; images/video/audio cancelled)"
+            hint="Page stays available; images/video/audio cancelled. * = every URL; use Allowed websites for exceptions."
           >
             <Textarea
               rows={3}
-              placeholder="youtube.com&#10;reddit.com"
+              placeholder={'*\nyoutube.com'}
               value={websitesMediaBlockedAdd}
               onChange={(e) => setWebsitesMediaBlockedAdd(e.target.value)}
             />

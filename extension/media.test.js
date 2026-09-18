@@ -8,11 +8,18 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { matchesPatternWithPath } from './matcher.js';
+import {
+    matchesPatternWithPath,
+    isCatchAllPattern,
+    isProtectedBrowserUrl,
+    evaluateUrlAgainstBlockField,
+} from './matcher.js';
 import {
     MEDIA_FETCH_RESOURCE_TYPES,
     MEDIA_RESOURCE_TYPES,
     collectMediaInitiatorDomains,
+    collectCatchAllMediaAllowDomains,
+    hasMediaCatchAll,
     isPathSpecificPattern,
     patternToInitiatorDomain,
     shouldBlockMedia,
@@ -21,8 +28,11 @@ import {
 } from './media.js';
 
 // matcher.js is a sibling importScripts global in the service worker; the
-// media helpers call matchesPatternWithPath by name. Expose it for bun.
+// media helpers call these by name. Expose them for bun.
 globalThis.matchesPatternWithPath = matchesPatternWithPath;
+globalThis.isCatchAllPattern = isCatchAllPattern;
+globalThis.isProtectedBrowserUrl = isProtectedBrowserUrl;
+globalThis.evaluateUrlAgainstBlockField = evaluateUrlAgainstBlockField;
 
 describe('pattern helpers', () => {
     test('domain-only vs path-specific', () => {
@@ -165,5 +175,106 @@ describe('DNR compilation', () => {
         expect(rules[0].condition.resourceTypes).not.toContain('main_frame');
         expect(rules[2].condition.tabIds).toEqual([7]);
         expect(rules.some((r) => r.condition.regexFilter)).toBe(true);
+    });
+
+    test('session allow rules are higher priority than block rules', () => {
+        const rules = buildSessionMediaRules([1], 1000, [2]);
+        expect(rules.length).toBe(4);
+        expect(rules[0].action.type).toBe('block');
+        expect(rules[2].action.type).toBe('allow');
+        expect(rules[2].priority).toBeGreaterThan(rules[0].priority);
+        expect(rules[2].condition.tabIds).toEqual([2]);
+        expect(rules[2].condition.resourceTypes).not.toContain('main_frame');
+    });
+});
+
+describe('shouldBlockMedia — catch-all *', () => {
+    const starMedia = [
+        { name: 'focus', media_blocked: ['*'], allowed: ['openai.com'] },
+    ];
+
+    test('strips media on every http(s) page except allows', () => {
+        expect(shouldBlockMedia('https://example.com/', starMedia).blocked).toBe(true);
+        expect(shouldBlockMedia('https://news.ycombinator.com/', starMedia).blocked).toBe(true);
+        expect(shouldBlockMedia('https://openai.com/', starMedia).blocked).toBe(false);
+        expect(shouldBlockMedia('https://openai.com/chat', starMedia).allowed).toBe(true);
+        expect(shouldBlockMedia('https://chat.openai.com/', starMedia).blocked).toBe(false);
+    });
+
+    test('never strips media on internals or the local daemon', () => {
+        expect(shouldBlockMedia('chrome://extensions', starMedia).blocked).toBe(false);
+        expect(shouldBlockMedia('chrome-extension://abc/popup.html', starMedia).blocked).toBe(false);
+        expect(shouldBlockMedia('about:blank', starMedia).blocked).toBe(false);
+        expect(shouldBlockMedia('edge://settings', starMedia).blocked).toBe(false);
+        expect(shouldBlockMedia('http://127.0.0.1:8765/', starMedia).blocked).toBe(false);
+        expect(shouldBlockMedia('http://localhost:8765/api', starMedia).blocked).toBe(false);
+    });
+
+    test('path-specific allow unstrips that document under *', () => {
+        const blocks = [
+            { name: 'focus', media_blocked: ['*'], allowed: ['example.com/docs'] },
+        ];
+        expect(shouldBlockMedia('https://example.com/docs', blocks).blocked).toBe(false);
+        expect(shouldBlockMedia('https://example.com/other', blocks).blocked).toBe(true);
+    });
+
+    test('without * host media patterns are unchanged', () => {
+        const blocks = [{ name: 'focus', media_blocked: ['youtube.com'], allowed: [] }];
+        expect(shouldBlockMedia('https://youtube.com/watch', blocks).blocked).toBe(true);
+        expect(shouldBlockMedia('https://example.com/', blocks).blocked).toBe(false);
+    });
+});
+
+describe('DNR compilation — catch-all *', () => {
+    test('hasMediaCatchAll detects *', () => {
+        expect(hasMediaCatchAll([{ media_blocked: ['*'] }])).toBe(true);
+        expect(hasMediaCatchAll([{ media_blocked: ['youtube.com', '*'] }])).toBe(true);
+        expect(hasMediaCatchAll([{ media_blocked: ['youtube.com'] }])).toBe(false);
+        expect(hasMediaCatchAll([{ media_blocked: ['http*'] }])).toBe(false);
+    });
+
+    test('global block rules have no initiatorDomains and exclude loopback', () => {
+        const rules = buildDynamicMediaRules([
+            { media_blocked: ['*'], allowed: [] },
+        ]);
+        expect(rules.length).toBe(2);
+        expect(rules[0].action.type).toBe('block');
+        expect(rules[0].condition.initiatorDomains).toBeUndefined();
+        expect(rules[0].condition.resourceTypes).toEqual(MEDIA_RESOURCE_TYPES);
+        expect(rules[0].condition.resourceTypes).not.toContain('main_frame');
+        expect(rules[0].condition.excludedRequestDomains).toEqual(['localhost', '127.0.0.1']);
+        expect(rules[0].condition.excludedInitiatorDomains).toEqual(['127.0.0.1', 'localhost']);
+        expect(rules[1].condition.regexFilter).toContain('videoplayback');
+        expect(rules[1].condition.resourceTypes).toEqual(MEDIA_FETCH_RESOURCE_TYPES);
+        expect(rules[1].condition.regexFilter.includes('(')).toBe(false);
+    });
+
+    test('domain-wide allow becomes higher-priority initiator allow', () => {
+        const blocks = [{ media_blocked: ['*'], allowed: ['openai.com'] }];
+        expect(collectCatchAllMediaAllowDomains(blocks)).toEqual(['openai.com', 'www.openai.com']);
+        const rules = buildDynamicMediaRules(blocks);
+        expect(rules.length).toBe(4);
+        const allow = rules.filter((r) => r.action.type === 'allow');
+        expect(allow.length).toBe(2);
+        expect(allow[0].priority).toBeGreaterThan(rules[0].priority);
+        expect(allow[0].condition.initiatorDomains).toEqual(['openai.com', 'www.openai.com']);
+        expect(rules[0].condition.excludedInitiatorDomains).toEqual([
+            '127.0.0.1', 'localhost', 'openai.com', 'www.openai.com',
+        ]);
+    });
+
+    test('path-only allow does not get a host-wide initiator allow', () => {
+        const blocks = [{ media_blocked: ['*'], allowed: ['openai.com/docs'] }];
+        expect(collectCatchAllMediaAllowDomains(blocks)).toEqual([]);
+        const rules = buildDynamicMediaRules(blocks);
+        expect(rules.every((r) => r.action.type === 'block')).toBe(true);
+    });
+
+    test('* dominates mixed media lists for DNR (no host initiator rules)', () => {
+        const rules = buildDynamicMediaRules([
+            { media_blocked: ['*', 'youtube.com'], allowed: [] },
+        ]);
+        expect(rules[0].condition.initiatorDomains).toBeUndefined();
+        expect(hasMediaCatchAll([{ media_blocked: ['*', 'youtube.com'] }])).toBe(true);
     });
 });

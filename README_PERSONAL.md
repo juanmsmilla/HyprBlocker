@@ -15,6 +15,7 @@ Do not assume upstream has any of the below unless we open a PR to them later.
 | **Delay log + 1 MiB rotate** | `~/.config/hyprblocker/unblock_delay.log`, size-rotated | part of delay work + follow-ups |
 | **Cancel delay in Blocks** | Actions column shows Cancel delay when a block change is pending | same era as delay |
 | **Media-only blocking** | Page stays up; image/video/audio requests cancelled | PR #1 → `5eeaa0b` / `2da0572` |
+| **Catch-all `*`** | `*` in blocked or media-blocked = every http(s) URL; allows are exceptions | this PR |
 
 Related outside this repo: ask app `/focus` enables the HyprBlocker block named `focus` via `PUT /api/blocks/{id}` on `127.0.0.1:8765` (not a HyprBlocker CLI).
 
@@ -63,7 +64,7 @@ no GateSentry / MITM).
 
 ### Behavior
 - New field: **Media-blocked websites** → DB `websites_media_blocked`.
-- Patterns: same style as other website rules (`youtube.com`, path patterns, …).
+- Patterns: same style as other website rules (`youtube.com`, path patterns, …), plus literal `*` for every http(s) page.
 - Page navigations are **not** redirected by this field.
 - Extension cancels `image` / `media` / `object` (and typical video/audio fetches)  
   initiated by matching pages — including CDN hosts (e.g. `googlevideo.com`).
@@ -100,6 +101,36 @@ existing store overlay path.
 https://github.com/juanmsmilla/HyprBlocker/pull/1
 
 ---
+
+## 3. Catch-all `*` (full-page + media)
+
+### Intent
+Default-deny the whole web, then allow exceptions. Same `*` in **Blocked websites**
+(navigation → `blocked.html`) and **Media-blocked websites** (strip media, page stays).
+
+### Behavior
+- Literal `*` only (`http*` is not a catch-all).
+- Allowed websites on that block are the exceptions (grants overlay still applies).
+- Never matches `chrome://`, `chrome-extension://`, `about:`, `edge:`, or
+  `localhost` / `127.0.0.1` (daemon `:8765`). Fail closed on real sites; fail open
+  on internals.
+- If `*` and specific hosts share a list, `*` dominates.
+- Without `*`, host/path media DNR is unchanged (initiatorDomains + CDN).
+
+### Verify
+1. Reload unpacked extension.
+2. Block with `websites_blocked: *` and `websites_allowed: openai.com` → random
+   sites redirect to blocked.html; openai loads.
+3. Block with `websites_media_blocked: *` and allow `openai.com` → random sites
+   lose images/video; openai keeps media. `chrome://extensions` and
+   `http://127.0.0.1:8765` still work.
+4. Block without `*` is unchanged.
+
+### PR
+(this change)
+
+---
+
 
 ## Local layout (Omarchy)
 

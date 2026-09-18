@@ -7,12 +7,113 @@ from daemon.scheduler import get_scheduler
 
 logger = logging.getLogger(__name__)
 
+# Browser internals + loopback: never apply catch-all `*`, and never block
+# these URLs so the daemon / extension / chrome:// pages keep working.
+PROTECTED_SCHEMES = frozenset(
+    {
+        "chrome",
+        "chrome-extension",
+        "about",
+        "edge",
+        "brave",
+        "opera",
+        "vivaldi",
+        "moz-extension",
+        "devtools",
+        "view-source",
+    }
+)
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
 
 def parse_rules_from_text(text: str | None) -> list[str]:
     """Parse newline-separated rules from text field."""
     if not text:
         return []
     return [line.strip() for line in text.split('\n') if line.strip()]
+
+
+def _normalize_website_pattern(pattern: str) -> str:
+    """Strip http(s) scheme and trailing slash; lowercase. Leaves `*` intact."""
+    pattern = (pattern or "").lower().strip()
+    if pattern.startswith("https://"):
+        pattern = pattern[8:]
+    elif pattern.startswith("http://"):
+        pattern = pattern[7:]
+    return pattern.rstrip("/")
+
+
+def is_catch_all_pattern(pattern: str) -> bool:
+    """Literal `*` (optionally with an http(s) scheme) is the catch-all."""
+    return _normalize_website_pattern(pattern) == "*"
+
+
+def _hostname_only(host_port: str) -> str:
+    host = (host_port or "").lower()
+    if host.startswith("["):
+        end = host.find("]")
+        if end != -1:
+            return host[1:end]
+    if host.count(":") == 1:
+        return host.split(":", 1)[0]
+    return host
+
+
+def hostname_is_loopback(hostname: str) -> bool:
+    host = (hostname or "").lower()
+    if host.startswith("[") and "]" in host:
+        host = host[1 : host.index("]")]
+    return host in LOOPBACK_HOSTS
+
+
+def is_protected_url(url: str) -> bool:
+    """True for browser internals and loopback (incl. daemon :8765).
+
+    Fail open: these must stay reachable. Unparseable / empty URLs are
+    treated as protected.
+    """
+    raw = (url or "").strip()
+    if not raw:
+        return True
+    lower = raw.lower()
+    if lower.startswith("about:"):
+        return True
+
+    rest = raw
+    if "://" in raw:
+        scheme, rest = raw.split("://", 1)
+        if scheme.lower() in PROTECTED_SCHEMES:
+            return True
+    elif ":" in raw.split("/", 1)[0] and lower.split(":", 1)[0] in PROTECTED_SCHEMES:
+        return True
+
+    host = _hostname_only(rest.split("/")[0].split("?")[0].split("#")[0])
+    return hostname_is_loopback(host)
+
+
+def _catch_all_matches(url: str) -> bool:
+    """`*` matches every http(s) page except internals and loopback."""
+    raw = (url or "").strip()
+    if not raw:
+        return False
+    lower = raw.lower()
+    if lower.startswith("about:"):
+        return False
+
+    rest = raw
+    if "://" in raw:
+        scheme, rest = raw.split("://", 1)
+        if scheme.lower() not in ("http", "https"):
+            return False
+    elif ":" in raw.split("/", 1)[0]:
+        maybe_scheme = lower.split(":", 1)[0]
+        if maybe_scheme in PROTECTED_SCHEMES:
+            return False
+
+    host = _hostname_only(rest.split("/")[0].split("?")[0].split("#")[0])
+    if not host or hostname_is_loopback(host):
+        return False
+    return True
 
 
 class SiteBlocker:
@@ -23,6 +124,7 @@ class SiteBlocker:
         """Check if URL matches blocking pattern.
 
         Supports:
+        - Catch-all: * matches every http(s) site (not internals / loopback)
         - Domain matching: reddit.com matches www.reddit.com and reddit.com/anything
         - Path-specific: youtube.com/shorts only matches that specific path
         - Wildcard subdomains: *.reddit.com matches all subdomains
@@ -34,6 +136,9 @@ class SiteBlocker:
         Returns:
             bool: True if URL matches the pattern
         """
+        if is_catch_all_pattern(pattern):
+            return _catch_all_matches(url)
+
         # Remove protocol if present
         url = url.split('://')[-1] if '://' in url else url
         pattern = pattern.split('://')[-1] if '://' in pattern else pattern
@@ -86,7 +191,8 @@ class SiteBlocker:
     def should_block_url(self, url: str, blocked: list[str], allowed: list[str]) -> bool:
         """Check if URL should be blocked.
 
-        Allow list takes precedence over block list.
+        Allow list takes precedence over block list. Browser internals and
+        loopback fail open (never blocked) so the daemon stays reachable.
 
         Args:
             url: The URL to check
@@ -96,6 +202,9 @@ class SiteBlocker:
         Returns:
             bool: True if URL should be blocked
         """
+        if is_protected_url(url):
+            return False
+
         # Check if explicitly allowed
         for allow_pattern in allowed:
             if self.url_matches_pattern(url, allow_pattern):
@@ -123,6 +232,9 @@ class SiteBlocker:
         Returns:
             bool: True if blocked, False otherwise
         """
+        if is_protected_url(url):
+            return False
+
         scheduler = get_scheduler()
         if scheduler is None:
             return False
