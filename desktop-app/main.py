@@ -55,6 +55,7 @@ class API:
             'created_at': b.created_at,
             'websites_blocked': b.websites_blocked,
             'websites_allowed': b.websites_allowed,
+            'websites_media_blocked': b.websites_media_blocked,
             'apps_blocked': b.apps_blocked
         } for b in blocks]
 

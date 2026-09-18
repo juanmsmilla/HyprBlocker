@@ -32,6 +32,7 @@ const INITIAL_FORM_STATE: BlockInput = {
   block_end_time: '17:00',
   websites_blocked: '',
   websites_allowed: '',
+  websites_media_blocked: '',
   apps_blocked: '',
 };
 
@@ -56,6 +57,7 @@ export function BlockModal({ isOpen, onClose, editBlock }: BlockModalProps) {
         block_end_time: editBlock.block_end_time || '17:00',
         websites_blocked: editBlock.websites_blocked || '',
         websites_allowed: editBlock.websites_allowed || '',
+        websites_media_blocked: editBlock.websites_media_blocked || '',
         apps_blocked: editBlock.apps_blocked || '',
       });
       setBlockDays(parseDaysOfWeek(editBlock.block_days_of_week));
@@ -176,6 +178,18 @@ export function BlockModal({ isOpen, onClose, editBlock }: BlockModalProps) {
               placeholder="reddit.com&#10;youtube.com/shorts&#10;twitter.com"
               value={formData.websites_blocked || ''}
               onChange={(e) => updateField('websites_blocked', e.target.value || '')}
+            />
+          </FormGroup>
+
+          <FormGroup
+            label="Media-blocked websites"
+            hint="Page stays available; images, video, and audio requests are cancelled. Same host/path patterns as blocked websites."
+          >
+            <Textarea
+              rows={3}
+              placeholder="youtube.com&#10;reddit.com"
+              value={formData.websites_media_blocked || ''}
+              onChange={(e) => updateField('websites_media_blocked', e.target.value || '')}
             />
           </FormGroup>
 

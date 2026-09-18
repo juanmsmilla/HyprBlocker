@@ -5,14 +5,16 @@
 
 // Pattern matching lives in matcher.js so it can be unit-tested with bun
 // (provides matchesPattern and matchesPatternWithPath as globals).
+// Media DNR compilation lives in media.js (shouldBlockMedia, build*MediaRules).
 importScripts('matcher.js');
+importScripts('media.js');
 
 const DAEMON_URL = 'http://127.0.0.1:8765';
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 const RULES_REFRESH_INTERVAL = 5000; // 5 seconds
 
 let browserPID = null;
-let blocksData = [];  // Array of {id, name, blocked[], allowed[]}
+let blocksData = [];  // Array of {id, name, blocked[], allowed[], media_blocked[]}
 let safeSearchEnabled = false;  // Safe search enforcement setting
 let heartbeatIntervalId = null;
 let rulesRefreshIntervalId = null;
@@ -283,7 +285,10 @@ async function fetchBlockedSites() {
 
         const data = await response.json();
 
-        blocksData = data.blocks || [];
+        blocksData = (data.blocks || []).map((block) => ({
+            ...block,
+            media_blocked: block.media_blocked || []
+        }));
         safeSearchEnabled = data.safe_search_enabled || false;
 
         console.log('Blocks data updated:', blocksData.length, 'blocks');
@@ -294,6 +299,8 @@ async function fetchBlockedSites() {
             blocksData: blocksData,
             safeSearchEnabled: safeSearchEnabled
         });
+
+        await refreshMediaNetRequestRules();
 
     } catch (error) {
         console.error('Failed to fetch blocked sites:', error);
@@ -311,6 +318,71 @@ function startRulesRefresh() {
 
     // Refresh every minute
     rulesRefreshIntervalId = setInterval(fetchBlockedSites, RULES_REFRESH_INTERVAL);
+}
+
+/**
+ * Install declarativeNetRequest rules that cancel image/media/object (and
+ * typical video/audio XHR) without touching main_frame navigations.
+ *
+ * Dynamic rules cover domain-only media patterns via initiatorDomains.
+ * Session rules cover the current tab when its document URL matches
+ * (path-specific patterns and allow-list evaluation).
+ *
+ * @param {Object<number, string>} [pendingNavigations] tabId → URL for
+ *   navigations that have not yet committed (tabs.query still has the old URL).
+ */
+async function refreshMediaNetRequestRules(pendingNavigations) {
+    if (!chrome.declarativeNetRequest) {
+        console.warn('declarativeNetRequest unavailable — media blocking disabled');
+        return;
+    }
+
+    try {
+        const dynamicRules = buildDynamicMediaRules(blocksData);
+        const existingDynamic = await chrome.declarativeNetRequest.getDynamicRules();
+        await chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: existingDynamic.map((rule) => rule.id),
+            addRules: dynamicRules
+        });
+
+        const urlByTab = pendingNavigations || {};
+        const tabs = await chrome.tabs.query({});
+        const mediaTabIds = [];
+        const seen = new Set();
+        for (const tab of tabs) {
+            if (tab.id == null) {
+                continue;
+            }
+            seen.add(tab.id);
+            const url = urlByTab[tab.id] || tab.url;
+            if (url && shouldBlockMedia(url, blocksData).blocked) {
+                mediaTabIds.push(tab.id);
+            }
+        }
+        for (const [tabIdStr, url] of Object.entries(urlByTab)) {
+            const tabId = Number(tabIdStr);
+            if (seen.has(tabId)) {
+                continue;
+            }
+            if (url && shouldBlockMedia(url, blocksData).blocked) {
+                mediaTabIds.push(tabId);
+            }
+        }
+        const sessionRules = buildSessionMediaRules(mediaTabIds);
+        const existingSession = await chrome.declarativeNetRequest.getSessionRules();
+        await chrome.declarativeNetRequest.updateSessionRules({
+            removeRuleIds: existingSession.map((rule) => rule.id),
+            addRules: sessionRules
+        });
+
+        console.log(
+            'Media DNR rules updated:',
+            dynamicRules.length, 'dynamic,',
+            sessionRules.length, 'session (', mediaTabIds.length, 'tabs)'
+        );
+    } catch (error) {
+        console.error('Failed to update media DNR rules:', error);
+    }
 }
 
 /**
@@ -506,6 +578,11 @@ async function handleNavigationBlock(details, eventName) {
  * PRIMARY: Catch navigation before it starts (URL bar, new tabs)
  */
 chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
+    // Session media rules must be in place before subresources of the new
+    // document start (path-specific media patterns are tab-scoped).
+    if (details.frameId === 0) {
+        await refreshMediaNetRequestRules({ [details.tabId]: details.url });
+    }
     await handleNavigationBlock(details, 'onBeforeNavigate');
 });
 
@@ -528,6 +605,9 @@ chrome.webNavigation.onDOMContentLoaded.addListener(async (details) => {
  * Fires when sites use history.pushState/replaceState for client-side routing
  */
 chrome.webNavigation.onHistoryStateUpdated.addListener(async (details) => {
+    if (details.frameId === 0) {
+        await refreshMediaNetRequestRules({ [details.tabId]: details.url });
+    }
     await handleNavigationBlock(details, 'onHistoryStateUpdated');
 });
 
@@ -536,6 +616,7 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(async (details) => {
  */
 chrome.tabs.onRemoved.addListener((tabId) => {
     recentBlocks.delete(tabId);
+    refreshMediaNetRequestRules();
 });
 
 /**

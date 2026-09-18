@@ -90,8 +90,10 @@ def overlay_blocks(
 
     For each unexpired grant, its pattern is added to the ``allowed[]`` of every
     block that would block the granted URL — except blocks in ``locked_block_ids``,
-    which are never loosened (the lock ratchet wins over a grant). The input is
-    not mutated.
+    which are never loosened (the lock ratchet wins over a grant). Full-page
+    ``blocked`` patterns and media-only ``media_blocked`` patterns both count as
+    matching (so an existing grant also unstrips media on that host when the
+    grant covers the whole host). The input is not mutated.
     """
     locked = locked_block_ids or set()
     live = active_grants(list(grants), now)
@@ -103,11 +105,15 @@ def overlay_blocks(
         allowed = list(block.get("allowed", []))
         if block.get("id") not in locked:
             blocked_patterns = block.get("blocked", [])
+            media_patterns = block.get("media_blocked", [])
             for grant in live:
                 blocks_it = any(
                     SiteBlocker.url_matches_pattern(grant.url, p) for p in blocked_patterns
                 )
-                if blocks_it and grant.pattern not in allowed:
+                media_it = any(
+                    SiteBlocker.url_matches_pattern(grant.url, p) for p in media_patterns
+                )
+                if (blocks_it or media_it) and grant.pattern not in allowed:
                     allowed.append(grant.pattern)
         result.append({**block, "allowed": allowed})
     return result

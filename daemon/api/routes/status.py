@@ -204,7 +204,8 @@ async def get_blocked_sites():
 
     This endpoint is used by the browser extension to get the list
     of sites to block. Returns per-block data so extension can implement
-    intersection-based allow list logic.
+    intersection-based allow list logic. ``media_blocked`` is the
+    media/resource-type list (page stays available; images/video/audio cancelled).
     """
     from daemon.config import get_config
     from daemon.scheduler import get_scheduler
@@ -230,7 +231,8 @@ async def get_blocked_sites():
             "id": block.id,
             "name": block.name,
             "blocked": [],
-            "allowed": []
+            "allowed": [],
+            "media_blocked": [],
         }
 
         # Parse blocked patterns
@@ -246,6 +248,13 @@ async def get_blocked_sites():
             block_data["allowed"] = [
                 line.strip()
                 for line in block.websites_allowed.split('\n')
+                if line.strip()
+            ]
+
+        if block.websites_media_blocked:
+            block_data["media_blocked"] = [
+                line.strip()
+                for line in block.websites_media_blocked.split('\n')
                 if line.strip()
             ]
 

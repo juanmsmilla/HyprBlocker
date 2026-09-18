@@ -29,6 +29,7 @@ class BlockCreate(BaseModel):
     enabled: bool = True
     websites_blocked: str | None = None  # Newline-separated list
     websites_allowed: str | None = None  # Newline-separated allow list
+    websites_media_blocked: str | None = None  # Images/video/audio on matching pages
     apps_blocked: str | None = None      # Newline-separated list
 
 
@@ -43,6 +44,7 @@ class BlockUpdate(BaseModel):
     enabled: bool | None = None
     websites_blocked: str | None = None
     websites_allowed: str | None = None
+    websites_media_blocked: str | None = None
     apps_blocked: str | None = None
 
 
@@ -54,6 +56,7 @@ class BlockStrictUpdate(BaseModel):
     - Removing items from allowed lists
     """
     websites_blocked_add: str | None = None      # Newline-separated items to ADD to blocked
+    websites_media_blocked_add: str | None = None  # ADD to media-blocked (tightening)
     apps_blocked_add: str | None = None          # Newline-separated items to ADD to blocked
     websites_allowed_remove: str | None = None   # Newline-separated items to REMOVE from allowed
 
@@ -74,6 +77,7 @@ class BlockResponse(BaseModel):
     lock_until: str | None
     websites_blocked: str | None
     websites_allowed: str | None
+    websites_media_blocked: str | None
     apps_blocked: str | None
     enabled: bool
     created_at: str

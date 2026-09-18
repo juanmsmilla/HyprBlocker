@@ -205,3 +205,26 @@ async def migrate_rules_to_text_fields(session: AsyncSession) -> None:
 
     await session.commit()
     logger.info(f"Migrated {len(blocks_data)} blocks from old rule format")
+
+
+async def migrate_websites_media_blocked(session: AsyncSession) -> None:
+    """Add websites_media_blocked to blocks if the column is missing.
+
+    SQLAlchemy create_all does not ALTER existing tables, so a live database
+    created before media blocking needs this extra column.
+    """
+    result = await session.execute(text(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='blocks'"
+    ))
+    if not result.fetchone():
+        logger.info("No blocks table yet; websites_media_blocked will be created with the schema")
+        return
+
+    result = await session.execute(text("PRAGMA table_info(blocks)"))
+    columns = {row[1] for row in result}
+    if "websites_media_blocked" in columns:
+        return
+
+    await session.execute(text("ALTER TABLE blocks ADD COLUMN websites_media_blocked TEXT"))
+    await session.commit()
+    logger.info("Added websites_media_blocked column to blocks")

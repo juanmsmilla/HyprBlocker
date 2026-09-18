@@ -66,6 +66,7 @@ class Block(Base):
     # Rule storage as text fields (newline-separated)
     websites_blocked = Column(Text, nullable=True)  # Newline-separated list
     websites_allowed = Column(Text, nullable=True)  # Newline-separated allow list
+    websites_media_blocked = Column(Text, nullable=True)  # Media/resource-type patterns
     apps_blocked = Column(Text, nullable=True)      # Newline-separated list
     apps_allowed = Column(Text, nullable=True)      # Newline-separated allow list
 
@@ -84,6 +85,7 @@ class Block(Base):
             "lock_until": self.lock_until.isoformat() if self.lock_until else None,
             "websites_blocked": self.websites_blocked,
             "websites_allowed": self.websites_allowed,
+            "websites_media_blocked": self.websites_media_blocked,
             "apps_blocked": self.apps_blocked,
             "enabled": self.enabled,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -133,7 +135,11 @@ def get_database_url() -> str:
 
 async def init_database():
     """Initialize the database and create all tables."""
-    from daemon.migrations import migrate_rules_to_text_fields, migrate_schedules_to_blocks
+    from daemon.migrations import (
+        migrate_rules_to_text_fields,
+        migrate_schedules_to_blocks,
+        migrate_websites_media_blocked,
+    )
 
     engine = create_async_engine(get_database_url(), echo=False)
 
@@ -143,6 +149,7 @@ async def init_database():
             try:
                 await migrate_schedules_to_blocks(session)
                 await migrate_rules_to_text_fields(session)
+                await migrate_websites_media_blocked(session)
             except Exception as e:
                 logger.warning(f"Migration check failed (may be first run): {e}")
 

@@ -15,7 +15,9 @@
     "tabs",
     "notifications",
     "webNavigation",
-    "alarms"
+    "alarms",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess"
   ],
   "incognito": "split",
   "host_permissions": [

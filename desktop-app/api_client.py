@@ -21,6 +21,7 @@ class Block:
     websites_blocked: str | None
     websites_allowed: str | None
     apps_blocked: str | None
+    websites_media_blocked: str | None = None
 
 
 @dataclass
@@ -287,6 +288,7 @@ class DaemonClient:
             block_id: Block ID to update
             **updates: Strict update fields:
                 - websites_blocked_add: Items to add to blocked websites
+                - websites_media_blocked_add: Items to add to media-blocked websites
                 - apps_blocked_add: Items to add to blocked apps
                 - websites_allowed_remove: Items to remove from allowed websites
 
