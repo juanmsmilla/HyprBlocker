@@ -36,7 +36,7 @@ const MEDIA_RESOURCE_TYPES = ['image', 'media', 'object'];
 const MEDIA_FETCH_RESOURCE_TYPES = ['xmlhttprequest', 'other'];
 // DASH/HLS and <video> fetches often show up as XHR rather than `media`.
 const MEDIA_FETCH_REGEX =
-    'videoplayback|\.mp4|\.m4v|\.m4s|\.m4a|\.webm|\.mp3|\.m3u8|\.ogg|\.wav|\.flac|\.mov|\.avi';
+    'videoplayback|\\.mp4|\\.m4v|\\.m4s|\\.m4a|\\.webm|\\.mp3|\\.m3u8|\\.ogg|\\.wav|\\.flac|\\.mov|\\.avi';
 
 const DYNAMIC_RULE_ID_TYPES = 1;
 const DYNAMIC_RULE_ID_FETCH = 2;
@@ -320,6 +320,23 @@ function collectCatchAllMediaAllowDomains(blocks) {
     return allowed.sort();
 }
 
+// Always-on CDNs for catch-all media (YouTube/X stream hosts). Video often
+// arrives as XHR to these domains, not as resourceType "media".
+const CATCH_ALL_MEDIA_CDN_DOMAINS = [
+    'googlevideo.com',
+    'www.googlevideo.com',
+    'ytimg.com',
+    'i.ytimg.com',
+    'i1.ytimg.com',
+    'i9.ytimg.com',
+    'yt3.ggpht.com',
+    'ggpht.com',
+    'abs.twimg.com',
+    'pbs.twimg.com',
+    'video.twimg.com',
+    'ton.twimg.com',
+];
+
 function buildCatchAllDynamicMediaRules(blocks) {
     const allowDomains = collectCatchAllMediaAllowDomains(blocks);
     const excludedInitiators = [...new Set([...PROTECTED_DNR_DOMAINS, ...allowDomains])].sort();
@@ -334,8 +351,31 @@ function buildCatchAllDynamicMediaRules(blocks) {
             resourceTypes: MEDIA_FETCH_RESOURCE_TYPES,
             excludedInitiatorDomains: excludedInitiators,
             excludedRequestDomains: PROTECTED_DNR_DOMAINS
+        }),
+        // Hard block YouTube/X media CDNs (XHR/other + classic media types).
+        mediaBlockRule(DYNAMIC_RULE_ID_CDN, {
+            requestDomains: CATCH_ALL_MEDIA_CDN_DOMAINS,
+            resourceTypes: MEDIA_RESOURCE_TYPES,
+            excludedInitiatorDomains: allowDomains.length ? allowDomains : undefined
+        }),
+        mediaBlockRule(DYNAMIC_RULE_ID_CDN_FETCH, {
+            requestDomains: CATCH_ALL_MEDIA_CDN_DOMAINS,
+            resourceTypes: MEDIA_FETCH_RESOURCE_TYPES,
+            excludedInitiatorDomains: allowDomains.length ? allowDomains : undefined
+        }),
+        // urlFilter backup — does not depend on regexFilter validation.
+        mediaBlockRule(DYNAMIC_RULE_ID_CDN_FETCH + 10, {
+            urlFilter: '*videoplayback*',
+            resourceTypes: MEDIA_FETCH_RESOURCE_TYPES,
+            excludedInitiatorDomains: allowDomains.length ? allowDomains : [...PROTECTED_DNR_DOMAINS]
         })
     ];
+    // Drop rules whose condition has undefined excludedInitiatorDomains key issues
+    for (const rule of rules) {
+        if (rule.condition.excludedInitiatorDomains === undefined) {
+            delete rule.condition.excludedInitiatorDomains;
+        }
+    }
     if (allowDomains.length > 0) {
         rules.push(mediaAllowRule(DYNAMIC_RULE_ID_ALLOW_TYPES, {
             initiatorDomains: allowDomains,
@@ -345,6 +385,12 @@ function buildCatchAllDynamicMediaRules(blocks) {
             initiatorDomains: allowDomains,
             regexFilter: MEDIA_FETCH_REGEX,
             resourceTypes: MEDIA_FETCH_RESOURCE_TYPES
+        }));
+        // Allow CDN media only when the page initiator is an allow-listed domain.
+        rules.push(mediaAllowRule(DYNAMIC_RULE_ID_ALLOW_FETCH + 10, {
+            initiatorDomains: allowDomains,
+            requestDomains: CATCH_ALL_MEDIA_CDN_DOMAINS,
+            resourceTypes: [...MEDIA_RESOURCE_TYPES, ...MEDIA_FETCH_RESOURCE_TYPES]
         }));
     }
     return rules;
