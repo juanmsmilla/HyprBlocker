@@ -6,9 +6,11 @@ returns a *mutation plan*; it never touches the database. The integrator
 CRUD/session machinery and schedules the expiry.
 
 INTERSECTION SEMANTICS (critical): ``SiteBlocker.is_site_blocked`` allows a
-URL only when it appears in the ``allowed[]`` of EVERY active block that would
-block it. A grant therefore must add the allow pattern to every matching
-block — adding it to just one changes nothing.
+URL only when every block in the highest matching priority band allows it.
+A grant therefore still adds the allow pattern to every field-matching block
+— that includes the winning band. Adding it to just one lower block changes
+nothing when a higher block also matches. Priority-vs-grant policy beyond that
+(and priority vs unblock-delay) is intentionally unchanged.
 
 Expiry is the mirror image: remove exactly the granted pattern line from every
 block it was added to, leaving pre-existing allow entries untouched.

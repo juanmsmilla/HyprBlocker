@@ -3,7 +3,7 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { parseDaysOfWeek, formatDays, formatDate } from '../../lib/api';
 import { getBlockActivity, formatRuleCount } from '../../lib/blocks';
-import type { Block, PendingUnblock } from '../../types';
+import type { Block, BlockPriority, PendingUnblock } from '../../types';
 
 interface BlocksTableProps {
   blocks: Block[];
@@ -14,6 +14,16 @@ interface BlocksTableProps {
   onLock: (block: Block) => void;
   onCancelDelay: (pending: PendingUnblock) => void;
   onAdd: () => void;
+}
+
+function formatPriority(priority: BlockPriority | undefined): React.ReactNode {
+  if (priority === 'high') {
+    return <Badge variant="warning">High</Badge>;
+  }
+  if (priority === 'medium') {
+    return <Badge variant="info">Medium</Badge>;
+  }
+  return <Badge variant="default">Low</Badge>;
 }
 
 function formatBlockMode(block: Block): React.ReactNode {
@@ -129,6 +139,9 @@ export function BlocksTable({
               Name
             </th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase tracking-wide">
+              Priority
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase tracking-wide">
               Block Mode
             </th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase tracking-wide">
@@ -151,6 +164,7 @@ export function BlocksTable({
             return (
               <tr key={block.id} className="border-t border-border hover:bg-bg-hover/50">
                 <td className="px-4 py-3 text-text">{block.name}</td>
+                <td className="px-4 py-3">{formatPriority(block.priority)}</td>
                 <td className="px-4 py-3">{formatBlockMode(block)}</td>
                 <td className="px-4 py-3">
                   <button

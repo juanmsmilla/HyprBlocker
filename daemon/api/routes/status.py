@@ -222,6 +222,8 @@ async def get_blocked_sites():
     active_blocks = await scheduler.get_active_blocks()
 
     # Return per-block data
+    from daemon.blocker import priority_label
+
     blocks_data = []
     locked_block_ids = set()
     now = datetime.now()
@@ -233,6 +235,7 @@ async def get_blocked_sites():
             "blocked": [],
             "allowed": [],
             "media_blocked": [],
+            "priority": priority_label(block.priority),
         }
 
         # Parse blocked patterns

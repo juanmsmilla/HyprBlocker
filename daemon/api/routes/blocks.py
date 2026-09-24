@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from daemon import pending_unblock
+from daemon.blocker import coerce_priority
 from daemon.database import Block
 from daemon.lock_manager import get_lock_manager
 from daemon.time_verifier import get_time_verifier
@@ -28,6 +29,24 @@ def _rules_set(rules: str | None) -> set[str]:
     if not rules:
         return set()
     return {r.strip() for r in rules.split("\n") if r.strip()}
+
+
+def _canonicalize_priority(block):
+    """Store priority as low|medium|high. Unset (None) is left unset.
+
+    A priority-only edit is not loosening or tightening: raising an allow-heavy
+    block can open sites and raising a block-heavy block can close them.
+    Unblock-delay therefore does not hold priority by itself. Locked blocks
+    still reject the whole update in check_block_lock. Grant overlay is
+    unchanged — see evaluate_url_against_blocks.
+    """
+    if block.priority is None:
+        return block
+    try:
+        canonical = coerce_priority(block.priority)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid priority") from None
+    return block.model_copy(update={"priority": canonical})
 
 
 def _is_loosening_update(db_block, block: BlockUpdate) -> bool:
@@ -74,6 +93,7 @@ async def get_blocks(session: AsyncSession = Depends(get_session)):
 @router.post("/blocks", response_model=BlockResponse)
 async def create_block(block: BlockCreate, session: AsyncSession = Depends(get_session)):
     """Create a new block."""
+    block = _canonicalize_priority(block)
     if block.block_mode not in ('always', 'time_range', 'disabled'):
         raise HTTPException(status_code=400, detail="Invalid block_mode")
 
@@ -99,6 +119,7 @@ async def create_block(block: BlockCreate, session: AsyncSession = Depends(get_s
         websites_allowed=block.websites_allowed,
         websites_media_blocked=block.websites_media_blocked,
         apps_blocked=block.apps_blocked,
+        priority=block.priority,
         enabled=block.enabled
     )
     session.add(db_block)
@@ -116,6 +137,7 @@ async def update_block(
     session: AsyncSession = Depends(get_session)
 ):
     """Update a block. Loosening changes may be delayed when unblock-delay is on."""
+    block = _canonicalize_priority(block)
     await check_block_lock(block_id)
 
     result = await session.execute(select(Block).where(Block.id == block_id))
@@ -199,6 +221,9 @@ async def update_block(
 
     if block.apps_blocked is not None:
         db_block.apps_blocked = block.apps_blocked
+
+    if block.priority is not None:
+        db_block.priority = block.priority
 
     await session.commit()
     await session.refresh(db_block)

@@ -70,10 +70,17 @@ class Block(Base):
     apps_blocked = Column(Text, nullable=True)      # Newline-separated list
     apps_allowed = Column(Text, nullable=True)      # Newline-separated allow list
 
+    # low | medium | high. Higher bands override lower ones; same band intersects.
+    # Missing/unknown is treated as low at evaluation time.
+    priority = Column(String(10), nullable=False, default="low", server_default="low")
+
     enabled = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     def to_dict(self):
+        # Local import: blocker imports the scheduler, which imports this module.
+        from daemon.blocker import priority_label
+
         return {
             "id": self.id,
             "name": self.name,
@@ -87,6 +94,7 @@ class Block(Base):
             "websites_allowed": self.websites_allowed,
             "websites_media_blocked": self.websites_media_blocked,
             "apps_blocked": self.apps_blocked,
+            "priority": priority_label(self.priority),
             "enabled": self.enabled,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
@@ -136,6 +144,7 @@ def get_database_url() -> str:
 async def init_database():
     """Initialize the database and create all tables."""
     from daemon.migrations import (
+        migrate_block_priority,
         migrate_rules_to_text_fields,
         migrate_schedules_to_blocks,
         migrate_websites_media_blocked,
@@ -150,6 +159,7 @@ async def init_database():
                 await migrate_schedules_to_blocks(session)
                 await migrate_rules_to_text_fields(session)
                 await migrate_websites_media_blocked(session)
+                await migrate_block_priority(session)
             except Exception as e:
                 logger.warning(f"Migration check failed (may be first run): {e}")
 

@@ -1,3 +1,7 @@
+// low overrides nothing; medium overrides low; high overrides both.
+// Missing or unknown values are treated as low.
+export type BlockPriority = 'low' | 'medium' | 'high';
+
 // Block configuration
 export interface Block {
   id: number;
@@ -14,6 +18,7 @@ export interface Block {
   websites_allowed: string | null;
   websites_media_blocked: string | null;
   apps_blocked: string | null;
+  priority: BlockPriority;
 }
 
 // Block input for creating/updating
@@ -22,6 +27,7 @@ export interface BlockInput {
   block_mode: 'always' | 'time_range' | 'disabled';
   lock_mode: 'none' | 'locked_until';
   enabled: boolean;
+  priority: BlockPriority;
   block_days_of_week?: string;
   block_start_time?: string;
   block_end_time?: string;

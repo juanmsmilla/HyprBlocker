@@ -58,6 +58,7 @@ def make_block(**overrides):
         websites_media_blocked=None,
         apps_blocked=None,
         apps_allowed=None,
+        priority=None,
         enabled=True,
     )
     defaults.update(overrides)

@@ -17,9 +17,11 @@
  * - Path-specific patterns (youtube.com/shorts) use the same matcher as
  *   website blocks, applied to the tab's document URL. Chromium DNR cannot
  *   filter by initiator path, so those are tab-scoped session rules.
- * - Allow lists / grants: same intersection idea as full-page blocks — a
- *   URL's media is stripped if ANY media-blocking block matches and that
- *   block does not allow the URL. Domain-wide allows/grants on a host
+ * - Allow lists / grants: same priority-band intersection as full-page blocks
+ *   (evaluateUrlAgainstBlockField). A URL's media is stripped when the
+ *   highest-priority media list that matches it does not allow it. Dynamic
+ *   DNR rules are compiled from that decision, not from a union of every
+ *   block's hosts. Domain-wide allows/grants on a host
  *   suppress host-wide initiator DNR for that block. Path-only allows do
  *   not punch a hole in domain-wide media rules (fail-closed: DNR has no
  *   initiator-path exclusion). Under catch-all `*`, a matching allow
@@ -96,35 +98,29 @@ function patternIsCatchAll(pattern) {
     return String(pattern || '').trim() === '*';
 }
 
+/**
+ * True when catch-all `*` is what actually blocks an otherwise-unlisted host
+ * after priority bands. A lower `*` still counts. A higher band that allows
+ * every host (or a non-`*` pattern that happens to match the probe) does not.
+ */
 function hasMediaCatchAll(blocks) {
-    for (const block of blocks || []) {
-        for (const pattern of block.media_blocked || []) {
-            if (patternIsCatchAll(pattern)) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-function patternsMatchUrl(urlPath, patterns) {
-    if (!patterns) {
+    const probe = 'https://hyprblocker-catchall-probe.invalid/';
+    if (!shouldBlockMedia(probe, blocks).blocked) {
         return false;
     }
-    for (const pattern of patterns) {
-        if (matchPath(urlPath, pattern)) {
-            return true;
-        }
-    }
-    return false;
+    const withoutStar = (blocks || []).map((block) => ({
+        ...block,
+        media_blocked: (block.media_blocked || []).filter((pattern) => !patternIsCatchAll(pattern)),
+    }));
+    return !shouldBlockMedia(probe, withoutStar).blocked;
 }
 
 /**
- * Intersection allow logic for media-only rules, mirroring shouldBlockUrl
- * but using each block's media_blocked list instead of blocked.
+ * Media decision. Same priority bands as full-page blocks, on `media_blocked`.
+ * If matcher.js did not load, fail closed instead of a priority-blind union.
  *
  * @param {string} url
- * @param {Array<{name?: string, media_blocked?: string[], allowed?: string[]}>} blocks
+ * @param {Array<{name?: string, priority?: string, media_blocked?: string[], allowed?: string[]}>} blocks
  * @returns {{blocked: boolean, allowed?: boolean, blockName?: string, hostname?: string}}
  */
 function shouldBlockMedia(url, blocks) {
@@ -132,40 +128,7 @@ function shouldBlockMedia(url, blocks) {
     if (typeof evaluate === 'function') {
         return evaluate(url, blocks, 'media_blocked');
     }
-    try {
-        const protectedFn = globalThis.isProtectedBrowserUrl;
-        if (typeof protectedFn === 'function' && protectedFn(url)) {
-            return { blocked: false };
-        }
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname;
-        const fullPath = hostname + urlObj.pathname;
-        const blockingBlocks = [];
-
-        for (const block of blocks || []) {
-            if (patternsMatchUrl(fullPath, block.media_blocked)) {
-                blockingBlocks.push(block);
-            }
-        }
-
-        if (blockingBlocks.length === 0) {
-            return { blocked: false };
-        }
-
-        for (const block of blockingBlocks) {
-            if (!patternsMatchUrl(fullPath, block.allowed)) {
-                return {
-                    blocked: true,
-                    blockName: block.name,
-                    hostname: hostname
-                };
-            }
-        }
-
-        return { blocked: false, allowed: true };
-    } catch (error) {
-        return { blocked: false };
-    }
+    return { blocked: true };
 }
 
 /**
@@ -244,7 +207,11 @@ function collectMediaInitiatorDomains(blocks) {
             }
         }
     }
-    return [...domains].sort();
+    // Drop hosts the priority-aware decision does not actually block
+    // (a higher band allowed them, or this block's own allow list did).
+    return [...domains].filter((domain) => {
+        return shouldBlockMedia('https://' + domain + '/', blocks).blocked;
+    }).sort();
 }
 
 function collectMediaCdnRequestDomains(blocks) {
@@ -262,6 +229,9 @@ function collectMediaCdnRequestDomains(blocks) {
             }
             const hostAllowed = allowed.some((p) => matchPath(domain, p) || matchPath('www.' + domain, p));
             if (hostAllowed) {
+                continue;
+            }
+            if (!shouldBlockMedia('https://' + domain + '/', blocks).blocked) {
                 continue;
             }
             for (const d of cdnRequestDomainsFor(domain)) {

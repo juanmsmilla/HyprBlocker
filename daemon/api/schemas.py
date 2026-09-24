@@ -31,6 +31,8 @@ class BlockCreate(BaseModel):
     websites_allowed: str | None = None  # Newline-separated allow list (exceptions, including to *)
     websites_media_blocked: str | None = None  # Images/video/audio; * = every page except allows
     apps_blocked: str | None = None      # Newline-separated list
+    # low | medium | high, or 0 | 1 | 2. Higher overrides lower; same band intersects.
+    priority: str | int = "low"
 
 
 class BlockUpdate(BaseModel):
@@ -46,6 +48,7 @@ class BlockUpdate(BaseModel):
     websites_allowed: str | None = None
     websites_media_blocked: str | None = None
     apps_blocked: str | None = None
+    priority: str | int | None = None
 
 
 class BlockStrictUpdate(BaseModel):
@@ -79,6 +82,7 @@ class BlockResponse(BaseModel):
     websites_allowed: str | None
     websites_media_blocked: str | None
     apps_blocked: str | None
+    priority: str = "low"
     enabled: bool
     created_at: str
 

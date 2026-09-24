@@ -119,6 +119,76 @@ describe('shouldBlockMedia — intersection allow logic', () => {
     });
 });
 
+describe('shouldBlockMedia — priority bands', () => {
+    test('same-band intersection is unchanged', () => {
+        const blocks = [
+            { name: 'a', priority: 'low', media_blocked: ['reddit.com'], allowed: ['reddit.com'] },
+            { name: 'b', priority: 'low', media_blocked: ['reddit.com'], allowed: [] },
+        ];
+        expect(shouldBlockMedia('https://reddit.com/', blocks).blocked).toBe(true);
+        expect(shouldBlockMedia('https://reddit.com/', blocks).blockName).toBe('b');
+    });
+
+    test('medium media+allow beats low catch-all; other sites stay low', () => {
+        const blocks = [
+            { name: 'low', priority: 'low', media_blocked: ['*'], allowed: [] },
+            {
+                name: 'medium',
+                priority: 'medium',
+                media_blocked: ['github.com'],
+                allowed: ['github.com'],
+            },
+        ];
+        expect(shouldBlockMedia('https://github.com/', blocks).blocked).toBe(false);
+        expect(shouldBlockMedia('https://github.com/', blocks).allowed).toBe(true);
+        const other = shouldBlockMedia('https://example.com/', blocks);
+        expect(other.blocked).toBe(true);
+        expect(other.blockName).toBe('low');
+        expect(hasMediaCatchAll(blocks)).toBe(true);
+        expect(collectCatchAllMediaAllowDomains(blocks)).toEqual(['github.com', 'www.github.com']);
+    });
+
+    test('allow list alone does not override a lower media block', () => {
+        const blocks = [
+            { name: 'low', priority: 'low', media_blocked: ['*'], allowed: [] },
+            { name: 'medium', priority: 'medium', media_blocked: [], allowed: ['github.com'] },
+        ];
+        expect(shouldBlockMedia('https://github.com/', blocks).blocked).toBe(true);
+        expect(collectCatchAllMediaAllowDomains(blocks)).toEqual([]);
+    });
+
+    test('high block beats low allow and still compiles initiator rules', () => {
+        const blocks = [
+            { name: 'low', priority: 'low', media_blocked: ['youtube.com'], allowed: ['youtube.com'] },
+            { name: 'high', priority: 'high', media_blocked: ['youtube.com'], allowed: [] },
+        ];
+        expect(shouldBlockMedia('https://youtube.com/watch', blocks).blocked).toBe(true);
+        expect(shouldBlockMedia('https://youtube.com/watch', blocks).blockName).toBe('high');
+        expect(collectMediaInitiatorDomains(blocks)).toEqual([
+            'm.youtube.com', 'music.youtube.com', 'www.youtube.com', 'youtube.com',
+        ]);
+    });
+
+    test('higher allow drops a lower block from DNR initiator rules', () => {
+        const blocks = [
+            { priority: 'low', media_blocked: ['youtube.com'], allowed: [] },
+            { priority: 'high', media_blocked: ['youtube.com'], allowed: ['youtube.com'] },
+        ];
+        expect(shouldBlockMedia('https://youtube.com/', blocks).blocked).toBe(false);
+        expect(collectMediaInitiatorDomains(blocks)).toEqual([]);
+        expect(buildDynamicMediaRules(blocks)).toEqual([]);
+    });
+
+    test('missing priority is low', () => {
+        const blocks = [
+            { name: 'legacy', media_blocked: ['*'], allowed: [] },
+            { name: 'high', priority: 'high', media_blocked: ['github.com'], allowed: ['github.com'] },
+        ];
+        expect(shouldBlockMedia('https://github.com/', blocks).blocked).toBe(false);
+        expect(shouldBlockMedia('https://example.com/', blocks).blocked).toBe(true);
+    });
+});
+
 describe('DNR compilation', () => {
     test('domain-only media patterns become initiatorDomains rules', () => {
         const rules = buildDynamicMediaRules([

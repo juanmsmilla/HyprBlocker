@@ -10,6 +10,9 @@
  * (chrome:/chrome-extension:/about:/edge:/…) and loopback (localhost,
  * 127.0.0.1, ::1). If `*` appears alongside host patterns in the same list,
  * `*` dominates because it already matches every eligible URL.
+ *
+ * Priority bands live in evaluateUrlAgainstBlockField and must stay aligned
+ * with evaluate_url_against_blocks in daemon/blocker.py.
  */
 
 const PROTECTED_SCHEMES = [
@@ -255,9 +258,49 @@ function matchesPatternWithPath(urlPath, pattern) {
     }
 }
 
+const PRIORITY_RANK = { low: 0, medium: 1, high: 2 };
+
 /**
- * Intersection allow logic for a block field (`blocked` or `media_blocked`).
- * Browser internals and loopback always fail open.
+ * 0, 1, or 2. Missing, blank, and unknown values are low (0).
+ * Accepts "low"|"medium"|"high" and 0|1|2.
+ */
+function priorityRank(block) {
+    const raw = block ? block.priority : undefined;
+    if (raw === 0 || raw === 1 || raw === 2) {
+        return raw;
+    }
+    if (typeof raw === 'string') {
+        const key = raw.trim().toLowerCase();
+        if (key === '0' || key === '1' || key === '2') {
+            return Number(key);
+        }
+        if (Object.prototype.hasOwnProperty.call(PRIORITY_RANK, key)) {
+            return PRIORITY_RANK[key];
+        }
+    }
+    return 0;
+}
+
+function listMatchesPath(fullPath, patterns) {
+    for (const pattern of patterns || []) {
+        if (matchesPatternWithPath(fullPath, pattern)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Priority-band intersection for a block field (`blocked` or `media_blocked`).
+ *
+ * A block cares only when its list for `field` matches the URL. Allow entries
+ * alone do not. Only the highest priority among caring blocks votes; inside
+ * that band, block unless every voter allows the URL. Missing priority is low.
+ *
+ * To override a lower media `*`, the higher block must list the site in
+ * `media_blocked` and (to leave it unblocked) in `allowed`. Other sites stay
+ * with the lower block. Browser internals and loopback always fail open.
+ * Callers pass only enabled, in-schedule blocks.
  */
 function evaluateUrlAgainstBlockField(url, blocks, field) {
     try {
@@ -273,31 +316,31 @@ function evaluateUrlAgainstBlockField(url, blocks, field) {
         );
         const hostname = parsed.hostname;
         const fullPath = hostname + parsed.pathname;
-        const blockingBlocks = [];
+        const caring = [];
 
         for (const block of blocks || []) {
-            const patterns = block[field] || [];
-            for (const pattern of patterns) {
-                if (matchesPatternWithPath(fullPath, pattern)) {
-                    blockingBlocks.push(block);
-                    break;
-                }
+            if (listMatchesPath(fullPath, block[field])) {
+                caring.push(block);
             }
         }
 
-        if (blockingBlocks.length === 0) {
+        if (caring.length === 0) {
             return { blocked: false };
         }
 
-        for (const block of blockingBlocks) {
-            let urlAllowedByThisBlock = false;
-            for (const pattern of block.allowed || []) {
-                if (matchesPatternWithPath(fullPath, pattern)) {
-                    urlAllowedByThisBlock = true;
-                    break;
-                }
+        let top = 0;
+        for (const block of caring) {
+            const rank = priorityRank(block);
+            if (rank > top) {
+                top = rank;
             }
-            if (!urlAllowedByThisBlock) {
+        }
+
+        for (const block of caring) {
+            if (priorityRank(block) !== top) {
+                continue;
+            }
+            if (!listMatchesPath(fullPath, block.allowed)) {
                 return {
                     blocked: true,
                     blockName: block.name,
@@ -325,5 +368,6 @@ if (typeof module !== 'undefined' && module.exports) {
         isHttpOrHttpsUrl,
         catchAllMatchesUrlPath,
         evaluateUrlAgainstBlockField,
+        priorityRank,
     };
 }

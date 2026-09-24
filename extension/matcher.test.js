@@ -221,3 +221,75 @@ describe('evaluateUrlAgainstBlockField — catch-all *', () => {
         expect(evaluateUrlAgainstBlockField('https://example.com/', blocks, 'blocked').blocked).toBe(false);
     });
 });
+
+describe('evaluateUrlAgainstBlockField — priority bands', () => {
+    test('same-band intersection is unchanged', () => {
+        const blocks = [
+            { name: 'a', priority: 'low', blocked: ['reddit.com'], allowed: ['reddit.com'] },
+            { name: 'b', priority: 'low', blocked: ['reddit.com'], allowed: [] },
+        ];
+        const denied = evaluateUrlAgainstBlockField('https://reddit.com/', blocks, 'blocked');
+        expect(denied.blocked).toBe(true);
+        expect(denied.blockName).toBe('b');
+
+        const bothAllow = [
+            { name: 'a', priority: 'medium', blocked: ['reddit.com'], allowed: ['reddit.com'] },
+            { name: 'b', priority: 'medium', blocked: ['reddit.com'], allowed: ['reddit.com'] },
+        ];
+        expect(evaluateUrlAgainstBlockField('https://reddit.com/', bothAllow, 'blocked')).toEqual({
+            blocked: false,
+            allowed: true,
+        });
+    });
+
+    test('high allow beats low catch-all; other hosts stay with low', () => {
+        const blocks = [
+            { name: 'low', priority: 'low', blocked: ['*'], allowed: [] },
+            { name: 'high', priority: 'high', blocked: ['github.com'], allowed: ['github.com'] },
+        ];
+        expect(evaluateUrlAgainstBlockField('https://github.com/', blocks, 'blocked')).toEqual({
+            blocked: false,
+            allowed: true,
+        });
+        const other = evaluateUrlAgainstBlockField('https://example.com/', blocks, 'blocked');
+        expect(other.blocked).toBe(true);
+        expect(other.blockName).toBe('low');
+    });
+
+    test('high block beats low allow', () => {
+        const blocks = [
+            { name: 'low', priority: 'low', blocked: ['github.com'], allowed: ['github.com'] },
+            { name: 'high', priority: 'high', blocked: ['github.com'], allowed: [] },
+        ];
+        const decision = evaluateUrlAgainstBlockField('https://github.com/', blocks, 'blocked');
+        expect(decision.blocked).toBe(true);
+        expect(decision.blockName).toBe('high');
+    });
+
+    test('missing and unknown priority count as low', () => {
+        const blocks = [
+            { name: 'legacy', blocked: ['reddit.com'], allowed: ['reddit.com'] },
+            { name: 'also-low', priority: 'urgent', blocked: ['reddit.com'], allowed: [] },
+        ];
+        const decision = evaluateUrlAgainstBlockField('https://reddit.com/', blocks, 'blocked');
+        expect(decision.blocked).toBe(true);
+        expect(decision.blockName).toBe('also-low');
+
+        const numeric = [
+            { name: 'low', priority: 0, blocked: ['*'], allowed: [] },
+            { name: 'high', priority: 2, blocked: ['github.com'], allowed: ['github.com'] },
+        ];
+        expect(evaluateUrlAgainstBlockField('https://github.com/', numeric, 'blocked').blocked).toBe(false);
+        expect(evaluateUrlAgainstBlockField('https://example.com/', numeric, 'blocked').blocked).toBe(true);
+    });
+
+    test('allow list alone does not outvote a lower field match', () => {
+        const blocks = [
+            { name: 'low', priority: 'low', blocked: ['*'], allowed: [] },
+            { name: 'medium', priority: 'medium', blocked: [], allowed: ['github.com'] },
+        ];
+        const decision = evaluateUrlAgainstBlockField('https://github.com/', blocks, 'blocked');
+        expect(decision.blocked).toBe(true);
+        expect(decision.blockName).toBe('low');
+    });
+});

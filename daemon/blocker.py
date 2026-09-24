@@ -33,6 +33,136 @@ def parse_rules_from_text(text: str | None) -> list[str]:
     return [line.strip() for line in text.split('\n') if line.strip()]
 
 
+# Stored and shown as labels. 0/1/2 are accepted on input as low/medium/high.
+_PRIORITY_FROM_RANK = {0: "low", 1: "medium", 2: "high"}
+_PRIORITY_RANK = {"low": 0, "medium": 1, "high": 2}
+_FIELD_KEYS = {
+    "blocked": ("blocked", "websites_blocked"),
+    "websites_blocked": ("blocked", "websites_blocked"),
+    "media_blocked": ("media_blocked", "websites_media_blocked"),
+    "websites_media_blocked": ("media_blocked", "websites_media_blocked"),
+}
+_MISSING = object()
+
+
+def coerce_priority(value) -> str:
+    """Return ``low``, ``medium``, or ``high``.
+
+    Raises ValueError when ``value`` is missing or not one of those labels
+    (or the equivalent ranks 0, 1, 2). Evaluation uses :func:`priority_rank`,
+    which maps anything unknown to low instead of raising.
+    """
+    if isinstance(value, bool) or value is None:
+        raise ValueError("invalid priority")
+    if isinstance(value, int):
+        if value in _PRIORITY_FROM_RANK:
+            return _PRIORITY_FROM_RANK[value]
+        raise ValueError("invalid priority")
+    if isinstance(value, str):
+        key = value.strip().lower()
+        if key in _PRIORITY_RANK:
+            return key
+        if key in ("0", "1", "2"):
+            return _PRIORITY_FROM_RANK[int(key)]
+    raise ValueError("invalid priority")
+
+
+def priority_label(value) -> str:
+    """Canonical label. Missing or unknown values are ``low``."""
+    try:
+        return coerce_priority(value)
+    except ValueError:
+        return "low"
+
+
+def priority_rank(value) -> int:
+    """0, 1, or 2. Missing or unknown values are low (0)."""
+    return _PRIORITY_RANK[priority_label(value)]
+
+
+def _raw_attr(block, key):
+    if isinstance(block, dict):
+        if key in block:
+            return block[key]
+        return _MISSING
+    if hasattr(block, key):
+        return getattr(block, key)
+    return _MISSING
+
+
+def _as_patterns(value) -> list[str]:
+    if isinstance(value, list):
+        return [str(pattern) for pattern in value if str(pattern).strip()]
+    return parse_rules_from_text(value if isinstance(value, str) else None)
+
+
+def _patterns_from(block, keys: tuple[str, ...]) -> list[str]:
+    for key in keys:
+        raw = _raw_attr(block, key)
+        if raw is _MISSING or raw is None:
+            continue
+        return _as_patterns(raw)
+    return []
+
+
+def _block_name(block) -> str | None:
+    raw = _raw_attr(block, "name")
+    if raw is _MISSING or raw is None:
+        return None
+    return str(raw)
+
+
+def evaluate_url_against_blocks(url: str, blocks, field: str) -> dict:
+    """Decide whether ``url`` is blocked for one field.
+
+    ``field`` is ``blocked`` / ``websites_blocked`` (full page) or
+    ``media_blocked`` / ``websites_media_blocked`` (media). Allow patterns
+    come from ``allowed`` or ``websites_allowed``.
+
+    A block *cares* only when its own list for that field matches the URL.
+    An allow list by itself does not. Callers pass blocks that are already
+    enabled and inside their schedule; this function does not re-check that.
+
+    Only the highest priority among caring blocks votes. Inside that band the
+    old intersection stands: block if any voter does not allow the URL, allow
+    only if every voter allows it. Missing or unknown priority is low, so a
+    set of legacy blocks behaves exactly as before.
+
+    To let ``github.com`` media through a low-priority media ``*``, the higher
+    block must list ``github.com`` in its media list *and* its allow list.
+    Other hosts stay with the lower block, because the higher block does not
+    care about them.
+
+    Grants and unblock-delay are not reinterpreted here. Grants still add an
+    allow pattern onto every field-matching block (so the winning band is
+    included). A priority-only edit is not classified as loosening.
+    """
+    if field not in _FIELD_KEYS:
+        raise ValueError(f"unknown block field: {field}")
+
+    if is_protected_url(url):
+        return {"blocked": False}
+
+    caring = []
+    for block in blocks or []:
+        patterns = _patterns_from(block, _FIELD_KEYS[field])
+        if any(SiteBlocker.url_matches_pattern(url, pattern) for pattern in patterns):
+            caring.append(block)
+
+    if not caring:
+        return {"blocked": False}
+
+    top = max(priority_rank(_raw_attr(block, "priority")) for block in caring)
+    for block in caring:
+        if priority_rank(_raw_attr(block, "priority")) != top:
+            continue
+        allowed = _patterns_from(block, ("allowed", "websites_allowed"))
+        if not any(SiteBlocker.url_matches_pattern(url, pattern) for pattern in allowed):
+            return {"blocked": True, "block_name": _block_name(block)}
+
+    return {"blocked": False, "allowed": True}
+
+
 def _normalize_website_pattern(pattern: str) -> str:
     """Strip http(s) scheme and trailing slash; lowercase. Leaves `*` intact."""
     pattern = (pattern or "").lower().strip()
@@ -222,9 +352,9 @@ class SiteBlocker:
     async def is_site_blocked(self, url: str) -> bool:
         """Check if a site is blocked using intersection-based allow logic.
 
-        A URL is allowed only if:
-        1. No active blocks would block it, OR
-        2. It appears in the allow list of EVERY block that would block it
+        A URL is allowed only if no enabled, in-schedule block's website list
+        matches it, or every block in the highest matching priority band allows
+        it. Missing priority is low. See :func:`evaluate_url_against_blocks`.
 
         Args:
             url: The URL to check (hostname or full URL)
@@ -240,42 +370,16 @@ class SiteBlocker:
             return False
 
         active_blocks = await scheduler.get_active_blocks()
-
-        # Find all blocks that would block this URL (ignoring allow lists)
-        blocking_blocks = []
-
-        for block in active_blocks:
-            blocked_patterns = parse_rules_from_text(block.websites_blocked)
-
-            # Check if this block's block patterns match the URL
-            for pattern in blocked_patterns:
-                if self.url_matches_pattern(url, pattern):
-                    blocking_blocks.append(block)
-                    break  # This block would block it, move to next block
-
-        # If no blocks would block this URL, it's allowed
-        if not blocking_blocks:
-            logger.debug(f"URL {url} not blocked by any block")
-            return False
-
-        # Check if URL is in the allow list of EVERY blocking block
-        for block in blocking_blocks:
-            allowed_patterns = parse_rules_from_text(block.websites_allowed)
-
-            # Check if this block's allow list contains the URL
-            url_allowed_by_this_block = False
-            for pattern in allowed_patterns:
-                if self.url_matches_pattern(url, pattern):
-                    url_allowed_by_this_block = True
-                    break
-
-            # If this blocking block doesn't allow the URL, it's blocked
-            if not url_allowed_by_this_block:
-                logger.debug(f"URL {url} blocked by block {block.id} ({block.name}) - not in allow list")
-                return True
-
-        # URL is in the allow list of ALL blocking blocks
-        logger.debug(f"URL {url} allowed by all {len(blocking_blocks)} blocking blocks")
+        decision = evaluate_url_against_blocks(url, active_blocks, "websites_blocked")
+        if decision["blocked"]:
+            logger.debug(
+                "URL %s blocked by block %s", url, decision.get("block_name")
+            )
+            return True
+        if decision.get("allowed"):
+            logger.debug("URL %s allowed by the highest priority band", url)
+        else:
+            logger.debug("URL %s not blocked by any block", url)
         return False
 
     async def get_blocked_sites(self) -> list[str]:
