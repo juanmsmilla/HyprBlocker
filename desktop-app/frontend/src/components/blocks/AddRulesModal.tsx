@@ -1,16 +1,130 @@
 import { useState } from 'react';
 import { Modal, ModalFooter } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import { Badge } from '../ui/Badge';
 import { FormGroup, FormSection, Textarea } from '../ui/FormElements';
 import { useToast } from '../../context/ToastContext';
 import { useStatus } from '../../context/StatusContext';
-import { api } from '../../lib/api';
-import type { Block } from '../../types';
+import { api, formatDays, parseDaysOfWeek } from '../../lib/api';
+import { getBlockActivity } from '../../lib/blocks';
+import type { Block, BlockPriority } from '../../types';
 
 interface AddRulesModalProps {
   isOpen: boolean;
   onClose: () => void;
   block: Block | null;
+}
+
+function ruleLines(value: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function priorityLabel(priority: BlockPriority | undefined): string {
+  if (priority === 'high') return 'High';
+  if (priority === 'medium') return 'Medium';
+  return 'Low';
+}
+
+function priorityVariant(priority: BlockPriority | undefined): 'warning' | 'info' | 'default' {
+  if (priority === 'high') return 'warning';
+  if (priority === 'medium') return 'info';
+  return 'default';
+}
+
+// Same window text as the blocks table, plus whether that window is active.
+function formatSchedule(block: Block): { window: string; activity: string } {
+  const activity = getBlockActivity(block);
+  let activityText = 'Off';
+  if (activity.state === 'active') {
+    activityText = activity.detail.startsWith('Until ')
+      ? `Active now, ${activity.detail.toLowerCase()}`
+      : 'Active now';
+  } else if (activity.state === 'scheduled') {
+    activityText = 'Scheduled';
+  } else if (!block.enabled) {
+    activityText = 'Off (disabled)';
+  } else if (block.block_mode === 'disabled') {
+    activityText = 'Off (not blocking)';
+  }
+
+  if (block.block_mode === 'always') {
+    return { window: 'Always', activity: activityText };
+  }
+  if (block.block_mode === 'time_range') {
+    const days = parseDaysOfWeek(block.block_days_of_week);
+    const daysText = days.length > 0 ? formatDays(days) : 'All days';
+    const start = block.block_start_time || '';
+    const end = block.block_end_time || '';
+    const range = [start, end].filter(Boolean).join(' - ');
+    return { window: range ? `${daysText} ${range}` : daysText, activity: activityText };
+  }
+  return { window: 'Disabled', activity: activityText };
+}
+
+function ReadOnlyRules({ value }: { value: string | null }) {
+  const items = ruleLines(value);
+  if (items.length === 0) {
+    return <p className="text-sm text-text-secondary">(none)</p>;
+  }
+  return (
+    <ul className="text-sm text-text space-y-0.5 break-words">
+      {items.map((item, index) => (
+        <li key={`${index}:${item}`}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function CurrentRulesSummary({ block }: { block: Block }) {
+  const schedule = formatSchedule(block);
+
+  return (
+    <FormSection
+      title="Current Rules"
+      hint="Read-only. These lists cannot be edited while the block is locked."
+    >
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 mb-5">
+        <div>
+          <dt className="text-xs text-text-secondary mb-1">Name</dt>
+          <dd className="text-sm text-text break-words">{block.name}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-text-secondary mb-1">Priority</dt>
+          <dd>
+            <Badge variant={priorityVariant(block.priority)}>{priorityLabel(block.priority)}</Badge>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-text-secondary mb-1">Enabled</dt>
+          <dd className="text-sm text-text">{block.enabled ? 'Enabled' : 'Disabled'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-text-secondary mb-1">Schedule</dt>
+          <dd>
+            <div className="text-sm text-text">{schedule.window}</div>
+            <div className="text-xs text-text-secondary mt-1">{schedule.activity}</div>
+          </dd>
+        </div>
+      </dl>
+
+      <FormGroup label="Websites blocked">
+        <ReadOnlyRules value={block.websites_blocked} />
+      </FormGroup>
+      <FormGroup label="Media blocked">
+        <ReadOnlyRules value={block.websites_media_blocked} />
+      </FormGroup>
+      <FormGroup label="Apps blocked">
+        <ReadOnlyRules value={block.apps_blocked} />
+      </FormGroup>
+      <FormGroup label="Websites allowed" className="!mb-0">
+        <ReadOnlyRules value={block.websites_allowed} />
+      </FormGroup>
+    </FormSection>
+  );
 }
 
 export function AddRulesModal({ isOpen, onClose, block }: AddRulesModalProps) {
@@ -88,6 +202,8 @@ export function AddRulesModal({ isOpen, onClose, block }: AddRulesModalProps) {
       size="large"
     >
       <form onSubmit={handleSubmit}>
+        <CurrentRulesSummary block={block} />
+
         <p className="text-sm text-text-secondary mb-4">
           This block is locked, but you can still add stricter rules.
           Adding blocked items and removing allowed items makes the block more restrictive.
