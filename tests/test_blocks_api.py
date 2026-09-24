@@ -102,6 +102,26 @@ class TestBlockCrud:
         assert block["lock_mode"] == "none"
         assert block["enabled"] is True
         assert block["websites_media_blocked"] == "twitch.tv"
+        assert block["priority"] == "low"
+
+    def test_create_and_update_priority(self, client):
+        block = create_block(client, priority="medium")
+        assert block["priority"] == "medium"
+
+        response = client.put(f"/api/blocks/{block['id']}", json={"priority": "high"})
+        assert response.status_code == 200
+        assert response.json()["priority"] == "high"
+
+        response = client.put(f"/api/blocks/{block['id']}", json={"priority": 0})
+        assert response.status_code == 200
+        assert response.json()["priority"] == "low"
+
+        listed = client.get("/api/blocks").json()
+        assert listed[0]["priority"] == "low"
+
+    def test_create_rejects_invalid_priority(self, client):
+        response = client.post("/api/blocks", json=block_payload(priority="urgent"))
+        assert response.status_code == 400
 
     def test_create_media_only_block(self, client):
         block = create_block(

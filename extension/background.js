@@ -14,7 +14,7 @@ const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 const RULES_REFRESH_INTERVAL = 5000; // 5 seconds
 
 let browserPID = null;
-let blocksData = [];  // Array of {id, name, blocked[], allowed[], media_blocked[]}
+let blocksData = [];  // Array of {id, name, priority, blocked[], allowed[], media_blocked[]}
 let safeSearchEnabled = false;  // Safe search enforcement setting
 let heartbeatIntervalId = null;
 let rulesRefreshIntervalId = null;
@@ -405,9 +405,9 @@ async function refreshMediaNetRequestRules(pendingNavigations) {
 }
 
 /**
- * Check if a URL should be blocked
- * Implements intersection-based allow logic: URL is allowed only if it appears
- * in the allow list of EVERY block that would otherwise block it.
+ * Check if a URL should be blocked.
+ * Highest priority band among blocks whose blocked list matches; inside that
+ * band the URL is allowed only if every one of them allows it.
  */
 function shouldBlockUrl(url) {
     const result = evaluateUrlAgainstBlockField(url, blocksData, 'blocked');

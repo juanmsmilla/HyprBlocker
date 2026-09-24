@@ -22,6 +22,7 @@ class Block:
     websites_allowed: str | None
     apps_blocked: str | None
     websites_media_blocked: str | None = None
+    priority: str = "low"
 
 
 @dataclass

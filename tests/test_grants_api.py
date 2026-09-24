@@ -224,6 +224,7 @@ def test_blocked_sites_exposes_media_patterns(client):
     focus = next(b for b in sites["blocks"] if b["name"] == "Focus")
     assert focus["blocked"] == ["reddit.com"]
     assert focus["media_blocked"] == ["youtube.com", "twitch.tv"]
+    assert focus["priority"] == "low"
 
 
 def test_blocked_sites_media_only_block(client):

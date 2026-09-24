@@ -1,14 +1,19 @@
 """Tests for core blocking logic: URL/app pattern matching and rule parsing."""
 
+import asyncio
+
 import pytest
 
 from daemon.blocker import (
     AppBlocker,
     SiteBlocker,
+    evaluate_url_against_blocks,
     is_catch_all_pattern,
     is_protected_url,
     parse_rules_from_text,
+    priority_rank,
 )
+from tests.conftest import make_block
 
 
 class TestParseRulesFromText:
@@ -246,3 +251,117 @@ class TestShouldBlockApp:
 
     def test_unlisted_app_not_blocked(self):
         assert not self.blocker.should_block_app("firefox", ["steam"], [])
+
+
+class TestPriorityBands:
+    """Highest caring band decides; same band keeps fail-closed intersection.
+
+    A block cares only when its own field list matches. An allow list alone
+    does not override a lower block — the higher block must list the site too.
+    """
+
+    def test_same_band_intersection_unchanged(self):
+        blocks = [
+            {"name": "a", "priority": "low", "blocked": ["reddit.com"], "allowed": ["reddit.com"]},
+            {"name": "b", "priority": "low", "blocked": ["reddit.com"], "allowed": []},
+        ]
+        denied = evaluate_url_against_blocks("https://reddit.com/", blocks, "blocked")
+        assert denied["blocked"] is True
+        assert denied["block_name"] == "b"
+
+        both_allow = [
+            {"name": "a", "priority": "medium", "blocked": ["reddit.com"], "allowed": ["reddit.com"]},
+            {"name": "b", "priority": "medium", "blocked": ["reddit.com"], "allowed": ["reddit.com"]},
+        ]
+        allowed = evaluate_url_against_blocks("https://reddit.com/", both_allow, "blocked")
+        assert allowed == {"blocked": False, "allowed": True}
+
+    def test_high_allow_beats_low_catch_all(self):
+        blocks = [
+            {"name": "low", "priority": "low", "blocked": ["*"], "allowed": []},
+            {
+                "name": "high",
+                "priority": "high",
+                "blocked": ["github.com"],
+                "allowed": ["github.com"],
+            },
+        ]
+        github = evaluate_url_against_blocks("https://github.com/", blocks, "blocked")
+        assert github == {"blocked": False, "allowed": True}
+        other = evaluate_url_against_blocks("https://example.com/", blocks, "blocked")
+        assert other["blocked"] is True
+        assert other["block_name"] == "low"
+
+    def test_high_block_beats_low_allow(self):
+        blocks = [
+            {
+                "name": "low",
+                "priority": "low",
+                "blocked": ["github.com"],
+                "allowed": ["github.com"],
+            },
+            {"name": "high", "priority": "high", "blocked": ["github.com"], "allowed": []},
+        ]
+        decision = evaluate_url_against_blocks("https://github.com/", blocks, "blocked")
+        assert decision["blocked"] is True
+        assert decision["block_name"] == "high"
+
+    def test_missing_and_unknown_priority_are_low(self):
+        assert priority_rank(None) == 0
+        assert priority_rank("") == 0
+        assert priority_rank("urgent") == 0
+        assert priority_rank(2) == 2
+        assert priority_rank(" high ") == 2
+
+        blocks = [
+            {"name": "legacy", "blocked": ["reddit.com"], "allowed": ["reddit.com"]},
+            {"name": "also-low", "priority": "nope", "blocked": ["reddit.com"], "allowed": []},
+        ]
+        decision = evaluate_url_against_blocks("https://reddit.com/", blocks, "blocked")
+        assert decision["blocked"] is True
+        assert decision["block_name"] == "also-low"
+
+    def test_allow_list_alone_does_not_override_lower_band(self):
+        blocks = [
+            {"name": "low", "priority": "low", "media_blocked": ["*"], "allowed": []},
+            {"name": "medium", "priority": "medium", "media_blocked": [], "allowed": ["github.com"]},
+        ]
+        decision = evaluate_url_against_blocks("https://github.com/", blocks, "media_blocked")
+        assert decision["blocked"] is True
+        assert decision["block_name"] == "low"
+
+    def test_media_higher_band_allow_leaves_other_sites_on_the_lower_block(self):
+        blocks = [
+            make_block(id=1, name="low", priority="low", websites_media_blocked="*"),
+            make_block(
+                id=2,
+                name="medium",
+                priority="medium",
+                websites_media_blocked="github.com",
+                websites_allowed="github.com",
+            ),
+        ]
+        github = evaluate_url_against_blocks("https://github.com/", blocks, "websites_media_blocked")
+        assert github == {"blocked": False, "allowed": True}
+        other = evaluate_url_against_blocks("https://example.com/", blocks, "media_blocked")
+        assert other["blocked"] is True
+        assert other["block_name"] == "low"
+
+    def test_is_site_blocked_uses_priority_bands(self, monkeypatch):
+        low = make_block(id=1, name="low", priority="low", websites_blocked="*")
+        high = make_block(
+            id=2,
+            name="high",
+            priority="high",
+            websites_blocked="github.com",
+            websites_allowed="github.com",
+        )
+
+        class _Sched:
+            async def get_active_blocks(self):
+                return [low, high]
+
+        monkeypatch.setattr("daemon.blocker.get_scheduler", lambda: _Sched())
+        blocker = SiteBlocker()
+        assert asyncio.run(blocker.is_site_blocked("https://github.com/")) is False
+        assert asyncio.run(blocker.is_site_blocked("https://example.com/")) is True

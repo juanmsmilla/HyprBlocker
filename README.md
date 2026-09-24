@@ -143,6 +143,7 @@ uv run python desktop-app/main.py
 A *block* groups rules together and defines when they're enforced and when configuration is locked.
 
 - **Block schedule**: always, time range (days + start/end time, overnight ranges supported), or disabled
+- **Priority**: low, medium, or high (default low). Higher priority overrides lower for sites that block lists
 - **Lock schedule**: none, or locked until a specific date/time
 - **Rules** (one per line):
 
@@ -173,7 +174,13 @@ Allow lists and grants still use intersection logic. A domain-wide allow/grant o
 | `old.reddit.com` | only that subdomain |
 | `steam` (app) | window class containing "steam" (e.g. `steam_app_123456`) |
 
-Allow lists always take precedence over block lists. When multiple blocks match a URL, it's only allowed if **every** matching block's allow list permits it.
+Each block has a **priority**: low, medium, or high. New and existing blocks default to **low**.
+
+For one URL, a block *cares* only when its own list matches — **Blocked Websites** for a full-page redirect, **Media-blocked websites** for media. An allow entry alone does not. Only the highest priority among blocks that care decides. Inside that band, the URL is allowed only if **every** caring block's allow list permits it (the same fail-closed intersection as before). Blocks that do not list the URL stay out of the vote, so other sites remain on the lower block.
+
+To let `github.com` media through a low-priority media `*`, add a medium or high block that lists `github.com` under **both** Media-blocked websites and Allowed websites. Listing it only under Allowed does not override the lower block. The same shape applies to full-page blocks. Missing or unknown priority counts as low, so nothing changes until you raise a block.
+
+App blocks are unchanged: any matching app rule still closes the app. Grants still add their allow pattern onto every field-matching block, which includes the winning band; there is no separate grant-versus-priority rule. A priority-only edit is not held by the unblock delay (a locked block still cannot be edited). Those two interactions are left as follow-up.
 
 ### Lock mode
 

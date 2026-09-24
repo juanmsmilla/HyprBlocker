@@ -228,3 +228,32 @@ async def migrate_websites_media_blocked(session: AsyncSession) -> None:
     await session.execute(text("ALTER TABLE blocks ADD COLUMN websites_media_blocked TEXT"))
     await session.commit()
     logger.info("Added websites_media_blocked column to blocks")
+
+
+async def migrate_block_priority(session: AsyncSession) -> None:
+    """Add blocks.priority and set existing rows to low.
+
+    Low is the historical priority: every existing block stays in one band, so
+    intersection behavior does not change until a block is raised.
+    """
+    result = await session.execute(text(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='blocks'"
+    ))
+    if not result.fetchone():
+        logger.info("No blocks table yet; priority will be created with the schema")
+        return
+
+    result = await session.execute(text("PRAGMA table_info(blocks)"))
+    columns = {row[1] for row in result}
+    if "priority" not in columns:
+        await session.execute(text(
+            "ALTER TABLE blocks ADD COLUMN priority TEXT NOT NULL DEFAULT 'low'"
+        ))
+        await session.commit()
+        logger.info("Added priority column to blocks (existing rows are low)")
+        return
+
+    await session.execute(text(
+        "UPDATE blocks SET priority = 'low' WHERE priority IS NULL OR TRIM(priority) = ''"
+    ))
+    await session.commit()

@@ -14,7 +14,7 @@ import {
 import { useToast } from '../../context/ToastContext';
 import { useStatus } from '../../context/StatusContext';
 import { api, parseDaysOfWeek } from '../../lib/api';
-import type { Block, BlockInput } from '../../types';
+import type { Block, BlockInput, BlockPriority } from '../../types';
 
 interface BlockModalProps {
   isOpen: boolean;
@@ -34,6 +34,7 @@ const INITIAL_FORM_STATE: BlockInput = {
   websites_allowed: '',
   websites_media_blocked: '',
   apps_blocked: '',
+  priority: 'low',
 };
 
 export function BlockModal({ isOpen, onClose, editBlock }: BlockModalProps) {
@@ -59,6 +60,9 @@ export function BlockModal({ isOpen, onClose, editBlock }: BlockModalProps) {
         websites_allowed: editBlock.websites_allowed || '',
         websites_media_blocked: editBlock.websites_media_blocked || '',
         apps_blocked: editBlock.apps_blocked || '',
+        priority: editBlock.priority === 'high' || editBlock.priority === 'medium'
+          ? editBlock.priority
+          : 'low',
       });
       setBlockDays(parseDaysOfWeek(editBlock.block_days_of_week));
     } else {
@@ -126,6 +130,20 @@ export function BlockModal({ isOpen, onClose, editBlock }: BlockModalProps) {
             onChange={(e) => updateField('name', e.target.value)}
             required
           />
+        </FormGroup>
+
+        <FormGroup
+          label="Priority"
+          hint="Higher priority overrides lower for sites this block lists. Same priority: every matching block must allow the site. To exempt a site from a lower block, list it in this block's blocked or media-blocked list and in Allowed websites."
+        >
+          <Select
+            value={formData.priority}
+            onChange={(e) => updateField('priority', e.target.value as BlockPriority)}
+          >
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </Select>
         </FormGroup>
 
         {/* Block Schedule Section */}
