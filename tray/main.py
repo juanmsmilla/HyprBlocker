@@ -118,6 +118,7 @@ class TrayApp:
     def _update_status(self):
         """Background thread to update daemon status."""
         while self.running:
+            previous_text = self._status_text
             try:
                 if self.client.is_daemon_running():
                     status = self.client.get_status()
@@ -135,8 +136,9 @@ class TrayApp:
             except Exception:
                 self._status_text = "Error checking status"
 
-            # Update menu
-            if self.icon:
+            # Only re-export the menu when the text changed; a re-export while
+            # the bar's tray popup is open can leave the popup stuck.
+            if self.icon and self._status_text != previous_text:
                 self.icon.update_menu()
 
             time.sleep(5)
