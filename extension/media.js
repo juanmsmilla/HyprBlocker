@@ -175,8 +175,12 @@ function cdnRequestDomainsFor(domain) {
         ];
     }
     if (domain === 'x.com' || domain === 'twitter.com') {
+        // abs.twimg.com is X's static app host (JS bundles, i18n, emoji,
+        // service-worker precache), not a media CDN. A request-domain block
+        // there cancels fetch() of those bundles (resourceType "other",
+        // tabId -1) and x.com never boots. Images on abs are still caught
+        // by the generic image/media/object rule.
         return [
-            'abs.twimg.com',
             'pbs.twimg.com',
             'video.twimg.com',
             'ton.twimg.com',
@@ -292,6 +296,8 @@ function collectCatchAllMediaAllowDomains(blocks) {
 
 // Always-on CDNs for catch-all media (YouTube/X stream hosts). Video often
 // arrives as XHR to these domains, not as resourceType "media".
+// abs.twimg.com is excluded: it serves X app code, not media (see
+// cdnRequestDomainsFor).
 const CATCH_ALL_MEDIA_CDN_DOMAINS = [
     'googlevideo.com',
     'www.googlevideo.com',
@@ -301,7 +307,6 @@ const CATCH_ALL_MEDIA_CDN_DOMAINS = [
     'i9.ytimg.com',
     'yt3.ggpht.com',
     'ggpht.com',
-    'abs.twimg.com',
     'pbs.twimg.com',
     'video.twimg.com',
     'ton.twimg.com',

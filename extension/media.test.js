@@ -347,4 +347,34 @@ describe('DNR compilation — catch-all *', () => {
         expect(rules[0].condition.initiatorDomains).toBeUndefined();
         expect(hasMediaCatchAll([{ media_blocked: ['*', 'youtube.com'] }])).toBe(true);
     });
+
+    test('catch-all CDN requestDomains omit abs.twimg.com and still block X media hosts', () => {
+        const rules = buildDynamicMediaRules([
+            { media_blocked: ['*'], allowed: ['example.com'] },
+        ]);
+        const withRequestDomains = rules.filter((r) => r.condition.requestDomains);
+        expect(withRequestDomains.length).toBeGreaterThan(0);
+        for (const rule of withRequestDomains) {
+            expect(rule.condition.requestDomains).not.toContain('abs.twimg.com');
+        }
+        const blocked = withRequestDomains
+            .filter((r) => r.action.type === 'block')
+            .flatMap((r) => r.condition.requestDomains);
+        expect(blocked).toContain('video.twimg.com');
+        expect(blocked).toContain('pbs.twimg.com');
+        expect(blocked).toContain('ton.twimg.com');
+    });
+
+    test('x.com and twitter.com CDN rules omit abs.twimg.com', () => {
+        for (const host of ['x.com', 'twitter.com']) {
+            const rules = buildDynamicMediaRules([
+                { media_blocked: [host], allowed: [] },
+            ]);
+            const domains = rules.flatMap((r) => r.condition.requestDomains || []);
+            expect(domains).not.toContain('abs.twimg.com');
+            expect(domains).toContain('video.twimg.com');
+            expect(domains).toContain('pbs.twimg.com');
+            expect(domains).toContain('ton.twimg.com');
+        }
+    });
 });
